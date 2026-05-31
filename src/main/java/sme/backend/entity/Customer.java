@@ -34,6 +34,9 @@ public class Customer extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String address;
 
+    @Column(name = "province_code", length = 50)
+    private String provinceCode;
+
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
 
@@ -85,8 +88,8 @@ public class Customer extends BaseEntity {
 
     private void updateTier() {
 
-        BigDecimal silverThreshold = new BigDecimal("5000000"); 
-        BigDecimal goldThreshold = new BigDecimal("20000000");
+        BigDecimal silverThreshold = new BigDecimal("500000"); 
+        BigDecimal goldThreshold = new BigDecimal("2000000");
 
         if (this.totalSpent != null && this.totalSpent.compareTo(goldThreshold) >= 0) {
             this.customerTier = CustomerTier.GOLD;

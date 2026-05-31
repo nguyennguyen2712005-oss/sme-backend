@@ -182,6 +182,8 @@ public class InventoryService {
                 .collect(java.util.stream.Collectors.toList());
 
         for (UUID pid : sortedIds) {
+            // Đảm bảo row tồn tại trong db trước khi lock, tránh lỗi 404
+            getOrCreate(pid, warehouseId);
             inventoryRepository.findByProductAndWarehouseWithLock(pid, warehouseId)
                     .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tồn kho cho SP: " + pid));
         }

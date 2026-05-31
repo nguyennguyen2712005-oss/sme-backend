@@ -104,6 +104,10 @@ public class CustomerController {
             customer.setPhoneNumber(newPhone);
         }
         
+        if (body.containsKey("provinceCode")) {
+            customer.setProvinceCode((String) body.get("provinceCode"));
+        }
+        
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật thành công", customerRepository.save(customer)));
     }
 
@@ -356,6 +360,7 @@ public class CustomerController {
                 .fullName(fullName)
                 .email(body.get("email"))
                 .address(body.get("address"))
+                .provinceCode(body.get("provinceCode"))
                 .gender(body.get("gender"))
                 .notes(body.get("notes"))
                 .isActive(true)
@@ -394,6 +399,7 @@ public class CustomerController {
         if (body.containsKey("fullName")) customer.setFullName((String) body.get("fullName"));
         if (body.containsKey("email")) customer.setEmail((String) body.get("email"));
         if (body.containsKey("address")) customer.setAddress((String) body.get("address"));
+        if (body.containsKey("provinceCode")) customer.setProvinceCode((String) body.get("provinceCode"));
         
         if (body.containsKey("dateOfBirth")) {
             String dobStr = (String) body.get("dateOfBirth");
