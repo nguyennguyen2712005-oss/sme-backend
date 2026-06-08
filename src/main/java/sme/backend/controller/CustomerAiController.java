@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 import sme.backend.ai.CustomerAiService;
 import sme.backend.dto.response.ApiResponse;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -19,8 +20,8 @@ public class CustomerAiController {
     private final CustomerAiService customerAiService;
 
     @PostMapping("/chat")
-    public ResponseEntity<ApiResponse<Map<String, String>>> chat(@RequestBody Map<String, String> body) {
-        String message = body.get("message");
+    public ResponseEntity<ApiResponse<Map<String, String>>> chat(@RequestBody Map<String, Object> body) {
+        String message = (String) body.get("message");
         if (message == null || message.isBlank()) {
             return ResponseEntity.badRequest().body(
                     ApiResponse.<Map<String, String>>builder()
@@ -29,8 +30,11 @@ public class CustomerAiController {
                             .build()
             );
         }
+        
+        @SuppressWarnings("unchecked")
+        List<Map<String, String>> history = (List<Map<String, String>>) body.get("history");
 
-        String reply = customerAiService.chat(message);
+        String reply = customerAiService.chat(message, history);
         return ResponseEntity.ok(ApiResponse.ok(Map.of("reply", reply)));
     }
 }
