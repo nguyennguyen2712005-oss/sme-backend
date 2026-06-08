@@ -45,6 +45,7 @@ public class ProductController {
             @RequestParam(required = false) Boolean isActive, 
             @RequestParam(required = false) Double minPrice,
             @RequestParam(required = false) Double maxPrice,
+            @RequestParam(required = false) Double minRating,
             @RequestParam(required = false) String sortBy,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
@@ -71,7 +72,7 @@ public class ProductController {
         
         var pageable = PageRequest.of(page, size, sort);
         return ResponseEntity.ok(ApiResponse.ok(
-                PageResponse.of(productService.search(keyword, categoryId, supplierId, warehouseId, isActive, minPrice, maxPrice, pageable))));
+                PageResponse.of(productService.search(keyword, categoryId, supplierId, warehouseId, isActive, minPrice, maxPrice, minRating, pageable))));
     }
 
     @GetMapping("/export")
@@ -82,10 +83,11 @@ public class ProductController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) Boolean isActive,
             @RequestParam(required = false) Double minPrice,
-            @RequestParam(required = false) Double maxPrice) throws IOException {
+            @RequestParam(required = false) Double maxPrice,
+            @RequestParam(required = false) Double minRating) throws IOException {
         
         var pageable = PageRequest.of(0, 5000, Sort.by("name"));
-        List<ProductResponse> products = productService.search(keyword, categoryId, supplierId, warehouseId, isActive, minPrice, maxPrice, pageable).getContent();
+        List<ProductResponse> products = productService.search(keyword, categoryId, supplierId, warehouseId, isActive, minPrice, maxPrice, minRating, pageable).getContent();
         
         byte[] excelBytes = excelExportService.exportProductsToExcel(products);
 
@@ -109,11 +111,12 @@ public class ProductController {
     @GetMapping("/{id}/reviews")
     public ResponseEntity<ApiResponse<PageResponse<ProductReviewResponse>>> getReviews(
             @PathVariable UUID id,
+            @RequestParam(required = false) Integer rating,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         var pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         return ResponseEntity.ok(ApiResponse.ok(
-                PageResponse.of(productReviewService.getReviewsByProduct(id, pageable))));
+                PageResponse.of(productReviewService.getReviewsByProduct(id, rating, pageable))));
     }
 
     @PostMapping

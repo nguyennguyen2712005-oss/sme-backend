@@ -91,7 +91,8 @@ public class AuthService {
             if (securityAuditService != null) {
                 securityAuditService.logAccountLocked(req.getUsername(), ip, userAgent, "Blocked by Account Lockout policy");
             }
-            throw new BusinessException("ACCOUNT_LOCKED", "Tài khoản của bạn đã bị khóa tạm thời do đăng nhập sai nhiều lần. Vui lòng thử lại sau.");
+            long minutes = redisTokenService.getLockoutRemainingMinutes(req.getUsername());
+            throw new BusinessException("ACCOUNT_LOCKED", "Tài khoản bị khóa do nhập sai nhiều lần. Vui lòng thử lại sau " + minutes + " phút.");
         }
 
         Authentication authentication;
@@ -107,7 +108,8 @@ public class AuthService {
                 int remaining = (RedisTokenService.MAX_FAILED_ATTEMPTS - (attempts % RedisTokenService.MAX_FAILED_ATTEMPTS)) % RedisTokenService.MAX_FAILED_ATTEMPTS;
                 if (remaining == 0) remaining = RedisTokenService.MAX_FAILED_ATTEMPTS; // It just got locked, the lockout block will catch it next time, but for the immediate response say 0? No, if it's locked it will be 0.
                 if (attempts % RedisTokenService.MAX_FAILED_ATTEMPTS == 0) {
-                    throw new BusinessException("ACCOUNT_LOCKED", "Tài khoản của bạn đã bị khóa tạm thời do đăng nhập sai nhiều lần. Vui lòng thử lại sau.");
+                    long minutes = redisTokenService.getLockoutRemainingMinutes(req.getUsername());
+                    throw new BusinessException("ACCOUNT_LOCKED", "Tài khoản bị khóa do nhập sai nhiều lần. Vui lòng thử lại sau " + minutes + " phút.");
                 } else {
                     throw new BusinessException("BAD_CREDENTIALS", "Tên đăng nhập hoặc mật khẩu không đúng. Bạn còn " + remaining + " lần thử trước khi bị khóa.");
                 }
@@ -164,7 +166,8 @@ public class AuthService {
             if (securityAuditService != null) {
                 securityAuditService.logAccountLocked(req.getUsername(), ip, userAgent, "Blocked by Account Lockout policy");
             }
-            throw new BusinessException("ACCOUNT_LOCKED", "Tài khoản của bạn đã bị khóa tạm thời do đăng nhập sai nhiều lần. Vui lòng thử lại sau.");
+            long minutes = redisTokenService.getLockoutRemainingMinutes(req.getUsername());
+            throw new BusinessException("ACCOUNT_LOCKED", "Tài khoản bị khóa do nhập sai nhiều lần. Vui lòng thử lại sau " + minutes + " phút.");
         }
 
         Authentication authentication;
@@ -179,7 +182,8 @@ public class AuthService {
             if (attempts > 0) {
                 int remaining = (RedisTokenService.MAX_FAILED_ATTEMPTS - (attempts % RedisTokenService.MAX_FAILED_ATTEMPTS)) % RedisTokenService.MAX_FAILED_ATTEMPTS;
                 if (attempts % RedisTokenService.MAX_FAILED_ATTEMPTS == 0) {
-                    throw new BusinessException("ACCOUNT_LOCKED", "Tài khoản của bạn đã bị khóa tạm thời do đăng nhập sai nhiều lần. Vui lòng thử lại sau.");
+                    long minutes = redisTokenService.getLockoutRemainingMinutes(req.getUsername());
+                    throw new BusinessException("ACCOUNT_LOCKED", "Tài khoản bị khóa do nhập sai nhiều lần. Vui lòng thử lại sau " + minutes + " phút.");
                 } else {
                     throw new BusinessException("BAD_CREDENTIALS", "Tên đăng nhập hoặc mật khẩu không đúng. Bạn còn " + remaining + " lần thử trước khi bị khóa.");
                 }
@@ -491,6 +495,9 @@ public class AuthService {
         }
         user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
         userRepository.save(user);
+        
+        // Fix 2: Auto unlock if the user changed password successfully
+        redisTokenService.unlockUser(user.getUsername());
 
         if (securityAuditService != null) {
             securityAuditService.logEvent(user.getUsername(), "PASSWORD_CHANGED", getClientIp(), getUserAgent(), "User changed password via profile");
@@ -543,6 +550,9 @@ public class AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+
+        // Fix 1: Auto unlock if the user reset password successfully
+        redisTokenService.unlockUser(user.getUsername());
 
         if (securityAuditService != null) {
             securityAuditService.logEvent(user.getUsername(), "PASSWORD_CHANGED", getClientIp(), getUserAgent(), "User reset password via forgot password flow");

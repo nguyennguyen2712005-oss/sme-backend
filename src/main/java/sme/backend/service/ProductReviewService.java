@@ -30,8 +30,8 @@ public class ProductReviewService {
     private final CustomerRepository customerRepository;
 
     @Transactional(readOnly = true)
-    public Page<ProductReviewResponse> getReviewsByProduct(UUID productId, Pageable pageable) {
-        return productReviewRepository.findByProductIdAndIsApprovedTrueOrderByCreatedAtDesc(productId, pageable)
+    public Page<ProductReviewResponse> getReviewsByProduct(UUID productId, Integer rating, Pageable pageable) {
+        return productReviewRepository.findApprovedReviewsWithRating(productId, rating, pageable)
                 .map(this::mapToResponse);
     }
 

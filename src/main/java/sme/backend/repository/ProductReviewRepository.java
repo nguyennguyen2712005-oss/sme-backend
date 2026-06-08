@@ -17,6 +17,9 @@ public interface ProductReviewRepository extends JpaRepository<ProductReview, UU
 
     Page<ProductReview> findByProductIdAndIsApprovedTrueOrderByCreatedAtDesc(UUID productId, Pageable pageable);
 
+    @Query("SELECT r FROM ProductReview r WHERE r.productId = :productId AND r.isApproved = true AND (:rating IS NULL OR r.rating = :rating) ORDER BY r.createdAt DESC")
+    Page<ProductReview> findApprovedReviewsWithRating(@Param("productId") UUID productId, @Param("rating") Integer rating, Pageable pageable);
+
     boolean existsByProductIdAndCustomerIdAndOrderId(UUID productId, UUID customerId, UUID orderId);
 
     List<ProductReview> findByProductIdInAndCustomerIdAndOrderId(java.util.List<UUID> productIds, UUID customerId, UUID orderId);

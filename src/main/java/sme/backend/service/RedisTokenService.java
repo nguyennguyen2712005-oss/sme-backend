@@ -166,6 +166,16 @@ public class RedisTokenService {
         }
     }
 
+    public long getLockoutRemainingMinutes(String username) {
+        try {
+            String lockoutKey = KEY_LOGIN_LOCKOUT_USERNAME + username;
+            Long expire = redisTemplate.getExpire(lockoutKey, TimeUnit.MINUTES);
+            return (expire != null && expire > 0) ? expire : 1;
+        } catch (Exception e) {
+            return 1;
+        }
+    }
+
     public void clearFailedAttempts(String username) {
         try {
             redisTemplate.delete(KEY_LOGIN_ATTEMPTS_USERNAME + username);

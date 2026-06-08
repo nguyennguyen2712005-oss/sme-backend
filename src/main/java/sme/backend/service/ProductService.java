@@ -270,9 +270,9 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public Page<ProductResponse> search(String keyword, UUID categoryId, UUID supplierId, UUID warehouseId,
-                                         Boolean isActive, Double minPrice, Double maxPrice, Pageable pageable) {
+                                         Boolean isActive, Double minPrice, Double maxPrice, Double minRating, Pageable pageable) {
         String slugKeyword = keyword == null ? "" : generateSlug(keyword).replace("-", "%");
-        Page<Product> productPage = productRepository.searchProducts(keyword, slugKeyword, categoryId, supplierId, isActive, minPrice, maxPrice, pageable);
+        Page<Product> productPage = productRepository.searchProducts(keyword, slugKeyword, categoryId, supplierId, isActive, minPrice, maxPrice, minRating, pageable);
         if (productPage.isEmpty()) return productPage.map(p -> mapToResponse(p, 0));
 
         List<UUID> categoryIds = productPage.getContent().stream()

@@ -100,6 +100,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             AND (:isActive IS NULL OR p.isActive = :isActive)
             AND (:minPrice IS NULL OR p.retailPrice >= :minPrice)
             AND (:maxPrice IS NULL OR p.retailPrice <= :maxPrice)
+            AND (:minRating IS NULL OR p.averageRating >= :minRating)
             AND (:keyword IS NULL OR :keyword = ''
             OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
             OR p.slug LIKE LOWER(CONCAT('%', :slugKeyword, '%'))
@@ -113,5 +114,6 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
                                  @Param("isActive") Boolean isActive,
                                  @Param("minPrice") Double minPrice,
                                  @Param("maxPrice") Double maxPrice,
+                                 @Param("minRating") Double minRating,
                                  Pageable pageable);
 }
