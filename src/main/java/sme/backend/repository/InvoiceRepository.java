@@ -142,6 +142,55 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
                 SUM(revenue) - SUM(cogs) AS gross_profit
             FROM (
                 SELECT
+                    DATE_TRUNC('hour', i.created_at) AS period,
+                    i.id AS doc_id,
+                    i.final_amount AS revenue,
+                    COALESCE(item_agg.total_cogs, 0) AS cogs
+                FROM invoices i
+                JOIN shifts s ON s.id = i.shift_id
+                LEFT JOIN (
+                    SELECT invoice_id, SUM(quantity * mac_price) AS total_cogs
+                    FROM invoice_items GROUP BY invoice_id
+                ) item_agg ON item_agg.invoice_id = i.id
+                WHERE (CAST(:wid AS VARCHAR) IS NULL OR CAST(s.warehouse_id AS VARCHAR) = CAST(:wid AS VARCHAR))
+                  AND i.type = 'SALE'
+                  AND (CAST(:cid AS UUID) IS NULL OR s.cashier_id = CAST(:cid AS UUID))
+                  AND i.created_at BETWEEN :from AND :to
+                  AND (CAST(:pm AS VARCHAR) IS NULL OR EXISTS (SELECT 1 FROM invoice_payments ip WHERE ip.invoice_id = i.id AND CAST(ip.method AS VARCHAR) = CAST(:pm AS VARCHAR)))
+
+                UNION ALL
+
+                SELECT
+                    DATE_TRUNC('hour', o.created_at) AS period,
+                    o.id AS doc_id,
+                    o.final_amount AS revenue,
+                    COALESCE(ord_item_agg.total_cogs, 0) AS cogs
+                FROM orders o
+                LEFT JOIN (
+                    SELECT order_id, SUM(quantity * mac_price) AS total_cogs
+                    FROM order_items GROUP BY order_id
+                ) ord_item_agg ON ord_item_agg.order_id = o.id
+                WHERE (CAST(:wid AS VARCHAR) IS NULL OR CAST(o.assigned_warehouse_id AS VARCHAR) = CAST(:wid AS VARCHAR))
+                  AND o.status = 'DELIVERED'
+                  AND (CAST(:cid AS VARCHAR) IS NULL OR CAST(o.created_by AS VARCHAR) = CAST(:cid AS VARCHAR))
+                  AND o.created_at BETWEEN :from AND :to
+                  AND (CAST(:pm AS VARCHAR) IS NULL OR o.payment_method = CAST(:pm AS VARCHAR))
+            ) combined_data
+            GROUP BY period
+            ORDER BY period
+            """, nativeQuery = true)
+    List<Map<String, Object>> getRevenueReportHourly(@Param("wid") UUID warehouseId, @Param("from") Instant from,
+            @Param("to") Instant to, @Param("pm") String paymentMethod, @Param("cid") UUID cashierId);
+
+    @Query(value = """
+            SELECT
+                period,
+                COUNT(DISTINCT doc_id) AS invoice_count,
+                SUM(revenue) AS revenue,
+                SUM(cogs) AS cogs,
+                SUM(revenue) - SUM(cogs) AS gross_profit
+            FROM (
+                SELECT
                     DATE_TRUNC('week', i.created_at) AS period,
                     i.id AS doc_id,
                     i.final_amount AS revenue,

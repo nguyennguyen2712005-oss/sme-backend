@@ -34,6 +34,10 @@ public class InventoryService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final InternalTransferRepository transferRepository;
     private final InvoiceRepository invoiceRepository;
+    
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private InventoryService self;
 
     private int getSafeLowStockThreshold() {
         try {
@@ -62,7 +66,7 @@ public class InventoryService {
     }
 
     @Transactional
-    @CacheEvict(value = "inventories", allEntries = true)
+    @CacheEvict(value = {"inventories", "inventory_by_product"}, allEntries = true)
     public void importStock(UUID productId, UUID warehouseId,
             int quantity, java.math.BigDecimal importPrice,
             UUID referenceId, String operator) {
@@ -99,7 +103,7 @@ public class InventoryService {
     }
 
     @Transactional
-    @CacheEvict(value = "inventories", allEntries = true)
+    @CacheEvict(value = {"inventories", "inventory_by_product"}, allEntries = true)
     public void deductForPOSSale(UUID productId, UUID warehouseId,
             int quantity, UUID invoiceId, String operator) {
         Inventory inv = inventoryRepository.findByProductAndWarehouseWithLock(productId, warehouseId)
@@ -119,7 +123,7 @@ public class InventoryService {
      * DEDUCT HÀNG LOẠT CHO POS (ANTI-DEADLOCK)
      */
     @Transactional
-    @CacheEvict(value = "inventories", allEntries = true)
+    @CacheEvict(value = {"inventories", "inventory_by_product"}, allEntries = true)
     public void deductForPOSSaleBatch(List<sme.backend.dto.request.CreateOrderRequest.OrderItemRequest> items, UUID warehouseId, UUID invoiceId, String operator) {
         // Sắp xếp tăng dần theo ProductID để tránh Cyclic Deadlock
         List<sme.backend.dto.request.CreateOrderRequest.OrderItemRequest> sortedItems = items.stream()
@@ -132,7 +136,7 @@ public class InventoryService {
     }
 
     @Transactional
-    @CacheEvict(value = "inventories", allEntries = true)
+    @CacheEvict(value = {"inventories", "inventory_by_product"}, allEntries = true)
     public void returnToStock(UUID productId, UUID warehouseId,
             int quantity, UUID referenceId, String reason, String operator) {
 
@@ -163,7 +167,7 @@ public class InventoryService {
     }
 
     @Transactional
-    @CacheEvict(value = "inventories", allEntries = true)
+    @CacheEvict(value = {"inventories", "inventory_by_product"}, allEntries = true)
     public void reserveForOnlineOrder(UUID productId, UUID warehouseId, int quantity, UUID orderId, String operator) {
         Inventory inv = inventoryRepository.findByProductAndWarehouseWithLock(productId, warehouseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tồn kho"));
@@ -199,7 +203,7 @@ public class InventoryService {
      * RESERVE HÀNG LOẠT CHO ONLINE (ANTI-DEADLOCK)
      */
     @Transactional
-    @CacheEvict(value = "inventories", allEntries = true)
+    @CacheEvict(value = {"inventories", "inventory_by_product"}, allEntries = true)
     public void reserveForOnlineOrderBatch(List<java.util.Map<String, Object>> items, UUID warehouseId, UUID orderId, String operator) {
         List<UUID> productIds = items.stream()
                 .map(item -> (UUID) item.get("productId"))
@@ -222,7 +226,7 @@ public class InventoryService {
     }
 
     @Transactional
-    @CacheEvict(value = "inventories", allEntries = true)
+    @CacheEvict(value = {"inventories", "inventory_by_product"}, allEntries = true)
     public void confirmOnlineShipment(UUID productId, UUID warehouseId, int quantity, UUID orderId, String operator) {
         Inventory inv = inventoryRepository.findByProductAndWarehouseWithLock(productId, warehouseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tồn kho"));
@@ -237,7 +241,7 @@ public class InventoryService {
     }
 
     @Transactional
-    @CacheEvict(value = "inventories", allEntries = true)
+    @CacheEvict(value = {"inventories", "inventory_by_product"}, allEntries = true)
     public void adjustInventory(AdjustInventoryRequest req, UUID referenceId, String operator) {
         getOrCreate(req.getProductId(), req.getWarehouseId());
         // NV-2: Dùng Pessimistic Lock (timeout 10s) cho Admin task, ưu tiên POS (3s)
@@ -255,7 +259,7 @@ public class InventoryService {
     }
 
     @Transactional
-    @CacheEvict(value = "inventories", allEntries = true)
+    @CacheEvict(value = {"inventories", "inventory_by_product"}, allEntries = true)
     public void releaseReservation(UUID productId, UUID warehouseId, int quantity, UUID orderId, String operator) {
         inventoryRepository.findByProductIdAndWarehouseId(productId, warehouseId)
                 .ifPresent(inv -> {
@@ -317,7 +321,7 @@ public class InventoryService {
     // KHÔI PHỤC LẠI NGUYÊN BẢN: Cập nhật dựa trên inventoryId
     // ====================================================================================
     @Transactional
-    @CacheEvict(value = "inventories", allEntries = true)
+    @CacheEvict(value = {"inventories", "inventory_by_product"}, allEntries = true)
     public void updateMinQuantity(UUID inventoryId, int newMinQuantity, String operator) {
         if (newMinQuantity < 0) {
             throw new BusinessException("INVALID_MIN_QTY", "Định mức tồn kho tối thiểu không được nhỏ hơn 0");
@@ -349,9 +353,10 @@ public class InventoryService {
                 .map(inv -> {
                     Product p = productRepository.findById(productId).orElseThrow();
                     String catName = p.getCategoryId() != null ? "Có danh mục" : "";
+                    String warehouseName = ""; // Or fetch it if needed, but this method is getInventoryByProduct (often used where warehouse is known)
                     return new InventoryResponse(
                             inv.getId(), p.getId(), p.getName(), p.getSku(), p.getIsbnBarcode(), p.getImageUrl(),
-                            catName,
+                            catName, warehouseName,
                             inv.getQuantity(), inv.getReservedQuantity(), inv.getInTransit(), inv.getMinQuantity(),
                             inv.isLowStock());
                 })
@@ -359,7 +364,7 @@ public class InventoryService {
                     Product p = productRepository.findById(productId)
                             .orElseThrow(() -> new ResourceNotFoundException("Product", productId));
                     return new InventoryResponse(
-                            null, p.getId(), p.getName(), p.getSku(), p.getIsbnBarcode(), p.getImageUrl(), "",
+                            null, p.getId(), p.getName(), p.getSku(), p.getIsbnBarcode(), p.getImageUrl(), "", "",
                             0, 0, 0, 0, false);
                 });
     }
@@ -423,5 +428,93 @@ public class InventoryService {
             java.time.Instant fromDate, java.time.Instant toDate, Pageable pageable) {
         return txnRepository.searchGlobalTransactions(warehouseId, transactionType, keyword, fromDate, toDate,
                 pageable);
+    }
+
+    // CẢNH BÁO: Vì có @Cacheable, nếu gọi method này trong một Transaction đang mở (VD: OrderService)
+    // thì Spring có thể trả về dữ liệu cache cũ trước khi Transaction commit.
+    // Thường được dùng chủ yếu cho mục đích đọc hiển thị UI.
+    @Cacheable(value = "inventory_by_product", key = "#productId.toString()")
+    @Transactional(readOnly = true)
+    public List<sme.backend.dto.response.WarehouseInventoryItem> getInventoryAcrossWarehouses(UUID productId) {
+        List<sme.backend.repository.WarehouseInventoryProjection> projections = inventoryRepository.findInventoryForAllWarehouses(productId);
+        int safeLowStock = getSafeLowStockThreshold();
+        
+        return projections.stream().map(proj -> {
+            int qty = proj.getQuantity() != null ? proj.getQuantity() : 0;
+            int resQty = proj.getReservedQuantity() != null ? proj.getReservedQuantity() : 0;
+            int minQty = proj.getMinQuantity() != null ? proj.getMinQuantity() : safeLowStock;
+            int availableQty = qty - resQty;
+            boolean lowStock = minQty > 0 && qty > 0 && qty <= minQty;
+            
+            return new sme.backend.dto.response.WarehouseInventoryItem(
+                proj.getWarehouseId(),
+                proj.getWarehouseName(),
+                proj.getInventoryId(),
+                qty,
+                resQty,
+                proj.getInTransit() != null ? proj.getInTransit() : 0,
+                availableQty,
+                minQty,
+                lowStock
+            );
+        }).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void adjustInventorySingleItem(AdjustInventoryRequest req, UUID referenceId, String operator) {
+        // NV-2: Dùng Pessimistic Lock (timeout 10s) cho Admin task, ưu tiên POS (3s)
+        // Chúng ta dùng findByProductAndWarehouseWithAdminLock
+        Inventory inv = inventoryRepository.findByProductAndWarehouseWithAdminLock(req.getProductId(), req.getWarehouseId())
+                .orElseThrow(() -> new ResourceNotFoundException("Inventory", req.getProductId()));
+        int before = inv.getQuantity() != null ? inv.getQuantity() : 0;
+        int diff = req.getActualQuantity() - before;
+
+        inv.setQuantity(req.getActualQuantity());
+        inv = inventoryRepository.save(inv);
+
+        recordTransaction(inv, referenceId, "ADJUSTMENT", diff, before, req.getActualQuantity(), operator,
+                req.getReason());
+        checkLowStockAlert(inv, before);
+    }
+
+    @org.springframework.cache.annotation.CacheEvict(value = {"inventories", "inventory_by_product"}, allEntries = true)
+    public sme.backend.dto.response.BulkAdjustResponse adjustInventoryBatch(List<AdjustInventoryRequest> requests, String operator) {
+        UUID referenceId = UUID.randomUUID();
+        int successCount = 0;
+        int errorCount = 0;
+        List<sme.backend.dto.response.BulkAdjustResponse.AdjustError> errors = new java.util.ArrayList<>();
+
+        // Sắp xếp requests theo productId để giảm thiểu deadlock (giống lockInventoriesForTransaction)
+        List<AdjustInventoryRequest> sortedRequests = new java.util.ArrayList<>(requests);
+        sortedRequests.sort((a, b) -> a.getProductId().compareTo(b.getProductId()));
+
+        for (int i = 0; i < sortedRequests.size(); i++) {
+            AdjustInventoryRequest req = sortedRequests.get(i);
+            try {
+                // Đảm bảo record tồn tại trước khi lock
+                getOrCreate(req.getProductId(), req.getWarehouseId());
+                self.adjustInventorySingleItem(req, referenceId, operator);
+                successCount++;
+            } catch (jakarta.persistence.PessimisticLockException | org.hibernate.exception.LockAcquisitionException e) {
+                // PessimisticLockException được phân loại retriable: true khác với các lỗi business logic khác
+                // vì đây là lỗi tạm thời khi đụng độ khóa ở POS/Online Order, không phải do dữ liệu sai.
+                errorCount++;
+                errors.add(new sme.backend.dto.response.BulkAdjustResponse.AdjustError(
+                        i + 1, "Lock timeout - vui lòng thử lại", true
+                ));
+            } catch (Exception e) {
+                // Các lỗi business logic hoặc dữ liệu sai (ví dụ NotFound) thì không thể tự sửa bằng cách thử lại.
+                errorCount++;
+                errors.add(new sme.backend.dto.response.BulkAdjustResponse.AdjustError(
+                        i + 1, e.getMessage(), false
+                ));
+            }
+        }
+
+        return sme.backend.dto.response.BulkAdjustResponse.builder()
+                .successCount(successCount)
+                .errorCount(errorCount)
+                .errors(errors)
+                .build();
     }
 }

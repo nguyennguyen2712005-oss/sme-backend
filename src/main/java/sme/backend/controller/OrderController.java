@@ -64,6 +64,7 @@ public class OrderController {
             @RequestParam(required = false) Instant fromDate,
             @RequestParam(required = false) Instant toDate,
             @RequestParam(required = false) String paymentStatus,
+            @RequestParam(required = false) String paymentMethod,
             @RequestParam(required = false) String provinceCode,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -88,7 +89,7 @@ public class OrderController {
 
         var pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         return ResponseEntity.ok(ApiResponse.ok(
-                PageResponse.of(orderService.getOrders(wid, orderStatus, orderType, keyword, fromDate, toDate, pStatus, provinceCode, pageable))));
+                PageResponse.of(orderService.getOrders(wid, orderStatus, orderType, keyword, fromDate, toDate, pStatus, paymentMethod, provinceCode, pageable))));
     }
 
     @GetMapping("/stats")
@@ -101,6 +102,7 @@ public class OrderController {
             @RequestParam(required = false) Instant fromDate,
             @RequestParam(required = false) Instant toDate,
             @RequestParam(required = false) String paymentStatus,
+            @RequestParam(required = false) String paymentMethod,
             @RequestParam(required = false) String provinceCode,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) String source) {
@@ -122,7 +124,8 @@ public class OrderController {
             try { pStatus = Order.PaymentStatus.valueOf(paymentStatus.toUpperCase()); } catch (IllegalArgumentException ignored) {}
         }
 
-        return ResponseEntity.ok(ApiResponse.ok(orderService.getOrderStats(wid, orderStatus, orderType, keyword, fromDate, toDate, pStatus, provinceCode, source)));
+        var stats = orderService.getOrderStats(wid, orderStatus, orderType, keyword, fromDate, toDate, pStatus, paymentMethod, provinceCode, source);
+        return ResponseEntity.ok(ApiResponse.ok(stats));
     }
 
     @GetMapping("/pending")

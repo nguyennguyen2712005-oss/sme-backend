@@ -36,6 +36,11 @@ public class ProductService {
     private final CategoryRepository categoryRepository;
     private final InventoryRepository inventoryRepository;
     private final ProductImageRepository productImageRepository; // ← THÊM MỚI
+    private final jakarta.validation.Validator validator;
+
+    @org.springframework.context.annotation.Lazy
+    @org.springframework.beans.factory.annotation.Autowired
+    private ProductService self;
 
     private String generateSlug(String name) {
         String slug = Normalizer.normalize(name, Normalizer.Form.NFD)
@@ -94,6 +99,44 @@ public class ProductService {
         saveImageList(saved.getId(), allUrls);
 
         return mapToResponse(saved, 0);
+    }
+
+    // Tách riêng transaction để đảm bảo 1 item lỗi không rollback toàn bộ bulk process
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void createProductRequiresNew(CreateProductRequest req) {
+        createProduct(req);
+    }
+
+    public sme.backend.dto.response.BulkImportResponse bulkCreate(List<CreateProductRequest> requests, int startIndex) {
+        int success = 0;
+        int error = 0;
+        List<String> errors = new ArrayList<>();
+
+        for (int i = 0; i < requests.size(); i++) {
+            CreateProductRequest req = requests.get(i);
+            try {
+                // Validate manually
+                java.util.Set<jakarta.validation.ConstraintViolation<CreateProductRequest>> violations = validator.validate(req);
+                if (!violations.isEmpty()) {
+                    throw new BusinessException("VALIDATION_FAILED", violations.iterator().next().getMessage());
+                }
+
+                // Gọi qua proxy self để kích hoạt REQUIRES_NEW, nếu gọi thẳng hàm local sẽ bị Spring AOP bỏ qua transaction
+                self.createProductRequiresNew(req);
+                success++;
+            } catch (Exception e) {
+                error++;
+                int displayIndex = req.getImportRowIndex() != null ? req.getImportRowIndex() : (startIndex + i);
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                errors.add("Dòng " + displayIndex + ": " + msg);
+            }
+        }
+
+        return sme.backend.dto.response.BulkImportResponse.builder()
+                .successCount(success)
+                .errorCount(error)
+                .errors(errors)
+                .build();
     }
 
     @Transactional

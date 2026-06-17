@@ -10,7 +10,9 @@ import org.springframework.web.bind.annotation.*;
 import sme.backend.dto.request.CreateCashbookEntryRequest;
 import sme.backend.dto.request.PaySupplierDebtRequest;
 import sme.backend.dto.response.ApiResponse;
+import sme.backend.dto.response.CashbookSummaryResponse;
 import sme.backend.dto.response.SupplierDebtResponse;
+import sme.backend.dto.response.SupplierDebtSummaryResponse;
 import sme.backend.entity.CashbookTransaction;
 import sme.backend.entity.SupplierDebt;
 import sme.backend.entity.User;
@@ -163,5 +165,62 @@ public class FinanceController {
 
         return ResponseEntity.ok(ApiResponse.ok(
                 financeService.searchCashbook(wid, from, to, fundType, transactionType, keyword, pageable)));
+    }
+
+    // =========================================================================
+    // CASHBOOK SUMMARY — SUM tại DB level, thay thế .reduce() sai ở frontend
+    // Params filter khớp hoàn toàn với /cashbook/search
+    // =========================================================================
+    @GetMapping("/cashbook/search/summary")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<CashbookSummaryResponse>> getCashbookSummary(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam Instant from,
+            @RequestParam Instant to,
+            @RequestParam(defaultValue = "ALL") String fundType,
+            @RequestParam(defaultValue = "ALL") String transactionType,
+            @RequestParam(required = false) String keyword) {
+
+        UUID wid = getEffectiveWarehouseId(principal, warehouseId);
+
+        return ResponseEntity.ok(ApiResponse.ok(
+                financeService.getCashbookSummary(wid, from, to, fundType, transactionType, keyword)));
+    }
+
+    // =========================================================================
+    // SUPPLIER DEBTS — search có phân trang, thay thế fetch-all ở frontend
+    // =========================================================================
+    @GetMapping("/supplier-debts/search")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<Page<SupplierDebtResponse>>> searchDebts(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        UUID wid = getEffectiveWarehouseId(principal, warehouseId);
+        Pageable pageable = PageRequest.of(page, size);
+
+        return ResponseEntity.ok(ApiResponse.ok(
+                financeService.searchDebtsPaged(wid, search, pageable)));
+    }
+
+    // =========================================================================
+    // SUPPLIER DEBTS SUMMARY — SUM tại DB level, thay thế .reduce() sai ở frontend
+    // Params filter khớp hoàn toàn với /supplier-debts/search
+    // =========================================================================
+    @GetMapping("/supplier-debts/search/summary")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<SupplierDebtSummaryResponse>> getDebtSummary(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) String search) {
+
+        UUID wid = getEffectiveWarehouseId(principal, warehouseId);
+
+        return ResponseEntity.ok(ApiResponse.ok(
+                financeService.getDebtSummary(wid, search)));
     }
 }

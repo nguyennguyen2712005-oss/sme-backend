@@ -23,6 +23,20 @@ import java.util.UUID;
 @Repository
 public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
 
+    @Query("""
+        SELECT w.id as warehouseId, w.name as warehouseName,
+               i.id as inventoryId,
+               COALESCE(i.quantity, 0) as quantity,
+               COALESCE(i.reservedQuantity, 0) as reservedQuantity,
+               COALESCE(i.inTransit, 0) as inTransit,
+               i.minQuantity as minQuantity
+        FROM Warehouse w
+        LEFT JOIN Inventory i ON i.warehouseId = w.id AND i.productId = :productId
+        WHERE w.isActive = true
+        ORDER BY w.name ASC
+    """)
+    List<WarehouseInventoryProjection> findInventoryForAllWarehouses(@Param("productId") UUID productId);
+
     Optional<Inventory> findByProductIdAndWarehouseId(UUID productId, UUID warehouseId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -105,7 +119,7 @@ public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
 
     @Query("""
                 SELECT new sme.backend.dto.response.InventoryResponse(
-                    i.id, p.id, p.name, p.sku, p.isbnBarcode, p.imageUrl, c.name,
+                    i.id, p.id, p.name, p.sku, p.isbnBarcode, p.imageUrl, c.name, w.name,
                     i.quantity,
                     i.reservedQuantity,
                     i.inTransit,
@@ -114,8 +128,9 @@ public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
                 )
                 FROM Inventory i
                 JOIN Product p ON p.id = i.productId
+                JOIN Warehouse w ON w.id = i.warehouseId
                 LEFT JOIN Category c ON c.id = p.categoryId
-                WHERE i.warehouseId = :warehouseId
+                WHERE (:warehouseId IS NULL OR i.warehouseId = :warehouseId)
                 AND p.isActive = true
                 AND (:keyword IS NULL OR :keyword = ''
                      OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%'))

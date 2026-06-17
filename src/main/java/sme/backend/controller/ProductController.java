@@ -125,6 +125,17 @@ public class ProductController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.created(productService.createProduct(req)));
     }
 
+    @PostMapping("/bulk")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<sme.backend.dto.response.BulkImportResponse>> bulkCreate(
+            @RequestBody List<CreateProductRequest> reqs,
+            @RequestParam(defaultValue = "0") int startIndex) {
+        if (reqs.size() > 500) {
+            throw new BusinessException("PAYLOAD_TOO_LARGE", "Không được import quá 500 sản phẩm mỗi lần");
+        }
+        return ResponseEntity.ok(ApiResponse.ok(productService.bulkCreate(reqs, startIndex)));
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> update(@PathVariable UUID id, @RequestBody UpdateProductRequest req) {

@@ -51,4 +51,7 @@ public class CreateProductRequest {
     private UUID authorId;
     private String author;
 
+    // Trường dùng cho Bulk Import để lưu lại số dòng gốc trong Excel
+    private Integer importRowIndex;
+
 }

@@ -67,6 +67,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
         AND (CAST(:fromDate AS java.time.Instant) IS NULL OR o.createdAt >= :fromDate)
         AND (CAST(:toDate AS java.time.Instant) IS NULL OR o.createdAt <= :toDate)
         AND (:paymentStatus IS NULL OR o.paymentStatus = :paymentStatus)
+        AND (:paymentMethod IS NULL OR o.paymentMethod = :paymentMethod)
         AND (:provinceCode IS NULL OR o.provinceCode = :provinceCode
              OR (:provinceCode = '79' AND o.provinceCode = 'HCM')
              OR (:provinceCode = '01' AND o.provinceCode = 'HN')
@@ -98,6 +99,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
                              @Param("fromDate") Instant fromDate,
                              @Param("toDate") Instant toDate,
                              @Param("paymentStatus") Order.PaymentStatus paymentStatus,
+                             @Param("paymentMethod") String paymentMethod,
                              @Param("provinceCode") String provinceCode,
                              Pageable pageable);
 
@@ -114,6 +116,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
         AND (CAST(:fromDate AS java.time.Instant) IS NULL OR o.createdAt >= :fromDate)
         AND (CAST(:toDate AS java.time.Instant) IS NULL OR o.createdAt <= :toDate)
         AND (:paymentStatus IS NULL OR o.paymentStatus = :paymentStatus)
+        AND (:paymentMethod IS NULL OR o.paymentMethod = :paymentMethod)
         AND (:provinceCode IS NULL OR o.provinceCode = :provinceCode
              OR (:provinceCode = '79' AND o.provinceCode = 'HCM')
              OR (:provinceCode = '01' AND o.provinceCode = 'HN')
@@ -144,6 +147,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
                                                 @Param("fromDate") Instant fromDate,
                                                 @Param("toDate") Instant toDate,
                                                 @Param("paymentStatus") Order.PaymentStatus paymentStatus,
+                                                @Param("paymentMethod") String paymentMethod,
                                                 @Param("provinceCode") String provinceCode,
                                                 @Param("pendingStatus") Order.OrderStatus pendingStatus,
                                                 @Param("paidStatus") Order.PaymentStatus paidStatus,

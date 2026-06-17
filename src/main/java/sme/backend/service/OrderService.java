@@ -678,8 +678,8 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public Page<OrderResponse> getOrders(UUID warehouseId, Order.OrderStatus status, Order.OrderType type,
-            String keyword, Instant fromDate, Instant toDate, Order.PaymentStatus paymentStatus, String provinceCode, Pageable pageable) {
-        Page<Order> paged = orderRepository.searchOrders(warehouseId, status, type, keyword, fromDate, toDate, paymentStatus, provinceCode, pageable);
+            String keyword, Instant fromDate, Instant toDate, Order.PaymentStatus paymentStatus, String paymentMethod, String provinceCode, Pageable pageable) {
+        Page<Order> paged = orderRepository.searchOrders(warehouseId, status, type, keyword, fromDate, toDate, paymentStatus, paymentMethod, provinceCode, pageable);
 
         java.util.List<UUID> customerIds = paged.getContent().stream().map(Order::getCustomerId).filter(java.util.Objects::nonNull).distinct().toList();
         java.util.List<UUID> warehouseIds = paged.getContent().stream().map(Order::getAssignedWarehouseId).filter(java.util.Objects::nonNull).distinct().toList();
@@ -900,7 +900,7 @@ public class OrderService {
                 .items(items).statusHistory(history).build();
     }
 
-    public Map<String, Object> getOrderStats(UUID warehouseId, Order.OrderStatus status, Order.OrderType type, String keyword, Instant fromDate, Instant toDate, Order.PaymentStatus paymentStatus, String provinceCode, String source) {
+    public Map<String, Object> getOrderStats(UUID warehouseId, Order.OrderStatus status, Order.OrderType type, String keyword, Instant fromDate, Instant toDate, Order.PaymentStatus paymentStatus, String paymentMethod, String provinceCode, String source) {
         long totalCount = 0;
         long pendingCount = 0;
         long paidCount = 0;
@@ -915,6 +915,7 @@ public class OrderService {
                 fromDate,
                 toDate,
                 paymentStatus,
+                paymentMethod,
                 provinceCode,
                 Order.OrderStatus.PENDING,
                 Order.PaymentStatus.PAID,

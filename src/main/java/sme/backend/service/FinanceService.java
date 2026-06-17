@@ -8,7 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import sme.backend.dto.request.CreateCashbookEntryRequest;
 import sme.backend.dto.request.PaySupplierDebtRequest;
+import sme.backend.dto.response.CashbookSummaryResponse;
 import sme.backend.dto.response.SupplierDebtResponse;
+import sme.backend.dto.response.SupplierDebtSummaryResponse;
 import sme.backend.entity.*;
 import sme.backend.exception.BusinessException;
 import sme.backend.exception.ResourceNotFoundException;
@@ -250,6 +252,76 @@ public class FinanceService {
     public BigDecimal getTotalOutstandingBySupplier(UUID supplierId) {
         BigDecimal total = supplierDebtRepository.getTotalOutstandingBySupplierId(supplierId);
         return total != null ? total : BigDecimal.ZERO;
+    }
+
+    // =========================================================================
+    // CASHBOOK SUMMARY — tính SUM tại DB level, thay thế .reduce() sai ở frontend
+    // (Lý do: frontend cũ chỉ tính trên 1 trang data, không phải toàn bộ kỳ)
+    // =========================================================================
+    @Transactional(readOnly = true)
+    public CashbookSummaryResponse getCashbookSummary(
+            UUID warehouseId, Instant from, Instant to,
+            String fundTypeStr, String txnTypeStr, String keyword) {
+
+        List<CashbookTransaction.FundType> fundTypes = ("ALL".equalsIgnoreCase(fundTypeStr) || fundTypeStr == null)
+                ? List.of(CashbookTransaction.FundType.values())
+                : List.of(CashbookTransaction.FundType.valueOf(fundTypeStr.toUpperCase()));
+
+        List<CashbookTransaction.TransactionType> txnTypes = ("ALL".equalsIgnoreCase(txnTypeStr) || txnTypeStr == null)
+                ? List.of(CashbookTransaction.TransactionType.values())
+                : List.of(CashbookTransaction.TransactionType.valueOf(txnTypeStr.toUpperCase()));
+
+        String kw = (keyword == null) ? "" : keyword.trim();
+
+        if (warehouseId == null) {
+            return cashbookRepository.summaryCashbookAll(from, to, fundTypes, txnTypes, kw);
+        }
+        return cashbookRepository.summaryCashbookByWarehouse(warehouseId, from, to, fundTypes, txnTypes, kw);
+    }
+
+    // =========================================================================
+    // SUPPLIER DEBT — search có phân trang + summary tại DB level
+    // (Lý do: frontend cũ fetch toàn bộ list rồi .reduce() gây memory issue)
+    // =========================================================================
+    @Transactional(readOnly = true)
+    public Page<SupplierDebtResponse> searchDebtsPaged(UUID warehouseId, String search, Pageable pageable) {
+        String kw = (search == null) ? "" : search.trim();
+        Page<SupplierDebt> page = supplierDebtRepository.searchOutstandingDebts(warehouseId, kw, pageable);
+
+        return page.map(debt -> {
+            var po = purchaseOrderRepository.findById(debt.getPurchaseOrderId()).orElse(null);
+            String warehouseName = "Không rõ";
+            String poCode = null;
+            UUID wid = null;
+
+            if (po != null) {
+                wid = po.getWarehouseId();
+                poCode = po.getCode();
+                var w = warehouseRepository.findById(wid).orElse(null);
+                if (w != null) warehouseName = w.getName();
+            }
+
+            return SupplierDebtResponse.builder()
+                    .id(debt.getId())
+                    .supplierId(debt.getSupplierId())
+                    .purchaseOrderId(debt.getPurchaseOrderId())
+                    .purchaseOrderCode(poCode)
+                    .warehouseId(wid)
+                    .warehouseName(warehouseName)
+                    .totalDebt(debt.getTotalDebt())
+                    .paidAmount(debt.getPaidAmount())
+                    .remainingAmount(debt.getRemainingAmount())
+                    .status(debt.getStatus().name())
+                    .dueDate(debt.getDueDate())
+                    .createdAt(debt.getCreatedAt())
+                    .build();
+        });
+    }
+
+    @Transactional(readOnly = true)
+    public SupplierDebtSummaryResponse getDebtSummary(UUID warehouseId, String search) {
+        String kw = (search == null) ? "" : search.trim();
+        return supplierDebtRepository.getSupplierDebtSummary(warehouseId, kw);
     }
 
     private UUID getWarehouseFromDebt(SupplierDebt debt) {

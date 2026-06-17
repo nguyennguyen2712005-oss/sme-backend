@@ -17,6 +17,7 @@ public class InventoryResponse {
     private String isbnBarcode;
     private String productImageUrl;
     private String categoryName;
+    private String warehouseName;
     private int quantity;
     private int reservedQuantity;
     private int inTransit;

@@ -25,6 +25,9 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
 
     boolean existsByPhoneNumber(String phoneNumber);
 
+    @Query("SELECT COUNT(c) FROM Customer c WHERE c.createdAt >= :fromDate AND c.createdAt <= :toDate")
+    long countNewCustomers(@Param("fromDate") java.time.Instant fromDate, @Param("toDate") java.time.Instant toDate);
+
     // ĐÃ NÂNG CẤP: Gộp cả tìm kiếm keyword và lọc theo hạng thẻ (tier) vào một Query linh hoạt
     @Query("SELECT c FROM Customer c WHERE c.isActive = true " +
            "AND (:tier IS NULL OR c.customerTier = :tier) " +

@@ -27,6 +27,7 @@ public class ReportController {
     private final InventoryRepository inventoryRepository;
     private final ProductRepository productRepository;
     private final CustomerRepository customerRepository;
+    private final sme.backend.service.BusinessReportService businessReportService;
 
     // Hàm tiện ích để đảm bảo Manager luôn chỉ truy cập được kho của họ
     private UUID getEffectiveWarehouseId(UserPrincipal principal, UUID requestedWarehouseId) {
@@ -61,6 +62,20 @@ public class ReportController {
         }
 
         return ResponseEntity.ok(ApiResponse.ok(result));
+    }
+
+    @GetMapping("/business")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<List<sme.backend.dto.response.BusinessReportItem>>> getBusinessReport(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam Instant from,
+            @RequestParam Instant to,
+            @RequestParam(defaultValue = "day") String period,
+            @RequestParam(required = false) UUID warehouseId) {
+
+        UUID wid = getEffectiveWarehouseId(principal, warehouseId);
+        return ResponseEntity.ok(ApiResponse.ok(
+                businessReportService.getBusinessReport(wid, from, to, period)));
     }
 
     @GetMapping("/inventory-value")
@@ -139,5 +154,13 @@ public class ReportController {
                 "warehouseId", wid != null ? wid.toString() : "ALL",
                 "revenueToday", revenue,
                 "lowStockCount", lowStockCount)));
+    }
+
+    @GetMapping("/new-customers")
+    @PreAuthorize("hasAnyRole('CASHIER','MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<Long>> getNewCustomersCount(
+            @RequestParam Instant from,
+            @RequestParam Instant to) {
+        return ResponseEntity.ok(ApiResponse.ok(customerRepository.countNewCustomers(from, to)));
     }
 }

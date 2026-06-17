@@ -36,10 +36,10 @@ public class InventoryController {
     private final InventoryService inventoryService;
     private final InventoryRepository inventoryRepository;
 
-    @GetMapping("/warehouse/{warehouseId}/search")
+    @GetMapping(value = {"/warehouse/{warehouseId}/search", "/search"})
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN', 'CASHIER')")
     public ResponseEntity<ApiResponse<PageResponse<InventoryResponse>>> searchInventory(
-            @PathVariable UUID warehouseId,
+            @PathVariable(required = false) UUID warehouseId,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) String status,
@@ -47,7 +47,7 @@ public class InventoryController {
             @RequestParam(defaultValue = "20") int size,
             @AuthenticationPrincipal UserPrincipal principal) {
 
-        UUID wid = (principal.getRole() == User.UserRole.ROLE_ADMIN) && warehouseId != null ? warehouseId
+        UUID wid = (principal.getRole() == User.UserRole.ROLE_ADMIN) ? warehouseId
                 : principal.getWarehouseId();
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "p.createdAt"));
 
@@ -60,6 +60,12 @@ public class InventoryController {
             @PathVariable UUID productId,
             @PathVariable UUID warehouseId) {
         return ResponseEntity.ok(ApiResponse.ok(inventoryService.getInventoryByProduct(warehouseId, productId)));
+    }
+
+    @GetMapping("/product/{productId}/all-warehouses")
+    public ResponseEntity<ApiResponse<List<sme.backend.dto.response.WarehouseInventoryItem>>> getInventoryForAllWarehouses(
+            @PathVariable UUID productId) {
+        return ResponseEntity.ok(ApiResponse.ok(inventoryService.getInventoryAcrossWarehouses(productId)));
     }
 
     @GetMapping("/{inventoryId}/transactions")
@@ -123,6 +129,21 @@ public class InventoryController {
             @AuthenticationPrincipal UserPrincipal principal) {
         inventoryService.adjustInventory(req, UUID.randomUUID(), principal.getUsername());
         return ResponseEntity.ok(ApiResponse.ok("Điều chỉnh tồn kho thành công", null));
+    }
+
+    @PostMapping("/adjust/bulk")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<sme.backend.dto.response.BulkAdjustResponse>> adjustInventoryBulk(
+            @RequestBody List<@Valid AdjustInventoryRequest> requests,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        if (requests == null || requests.isEmpty()) {
+            throw new sme.backend.exception.BusinessException("EMPTY_LIST", "Danh sách kiểm kê trống");
+        }
+        if (requests.size() > 500) {
+            throw new sme.backend.exception.BusinessException("TOO_MANY_ITEMS", "Chỉ được kiểm kê tối đa 500 sản phẩm mỗi lần");
+        }
+        sme.backend.dto.response.BulkAdjustResponse response = inventoryService.adjustInventoryBatch(requests, principal.getUsername());
+        return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
     // ====================================================================================
