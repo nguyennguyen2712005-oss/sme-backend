@@ -166,11 +166,7 @@ public class ProductService {
 
         if (req.getCategoryId() != null) product.setCategoryId(req.getCategoryId());
         if (req.getIsActive() != null) {
-            if (isManager && Boolean.TRUE.equals(product.getIsActive()) && Boolean.FALSE.equals(req.getIsActive())) {
-                // Ignore (Task 4: MANAGER cannot stop selling a product)
-            } else {
-                product.setIsActive(req.getIsActive());
-            }
+            product.setIsActive(req.getIsActive());
         }
         if (req.getUnit() != null) product.setUnit(req.getUnit());
         if (req.getWeight() != null) product.setWeight(req.getWeight());

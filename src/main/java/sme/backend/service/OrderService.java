@@ -474,11 +474,12 @@ public class OrderService {
             }
         }
 
+        Customer customer = order.getCustomerId() != null
+                ? customerRepository.findById(order.getCustomerId()).orElse(null)
+                : null;
+
         if (status == Order.OrderStatus.PENDING || status == Order.OrderStatus.DELIVERED
                 || status == Order.OrderStatus.CANCELLED) {
-            Customer customer = order.getCustomerId() != null
-                    ? customerRepository.findById(order.getCustomerId()).orElse(null)
-                    : null;
             if (customer != null && customer.getEmail() != null && !customer.getEmail().isBlank()) {
                 try {
                     emailService.sendOrderStatusEmail(
@@ -491,16 +492,28 @@ public class OrderService {
                     log.warn("Không gửi được email cho đơn hàng {}: {}", order.getCode(), e.getMessage());
                 }
             }
-            if (customer != null && customer.getUserId() != null) {
-                try {
-                    messagingTemplate.convertAndSend(
-                            "/topic/user/" + customer.getUserId() + "/orders",
-                            Map.of("type", "ORDER_STATUS_UPDATED", "orderId", order.getId(), "orderCode", order.getCode())
-                    );
-                } catch (Exception e) {
-                    log.warn("Lỗi khi gửi websocket cho customer {}: {}", customer.getUserId(), e.getMessage());
-                }
+        }
+
+        if (customer != null && customer.getUserId() != null) {
+            try {
+                messagingTemplate.convertAndSend(
+                        "/topic/user/" + customer.getUserId() + "/orders",
+                        Map.of("type", "ORDER_STATUS_UPDATED", "orderId", order.getId(), "orderCode", order.getCode())
+                );
+            } catch (Exception e) {
+                log.warn("Lỗi khi gửi websocket cho customer {}: {}", customer.getUserId(), e.getMessage());
             }
+        }
+
+        // Gửi thông báo realtime cho Admin và Warehouse Manager để cập nhật lại danh sách và nút trạng thái
+        try {
+            Map<String, Object> adminPayload = Map.of("type", "ORDER_STATUS_UPDATED", "orderId", order.getId(), "orderCode", order.getCode());
+            messagingTemplate.convertAndSend("/topic/admin/new-order", adminPayload);
+            if (order.getAssignedWarehouseId() != null) {
+                messagingTemplate.convertAndSend("/topic/warehouse/" + order.getAssignedWarehouseId() + "/new-order", adminPayload);
+            }
+        } catch (Exception e) {
+            log.warn("Lỗi khi gửi websocket cập nhật trạng thái đơn hàng cho Admin: {}", e.getMessage());
         }
 
         return mapToResponse(orderRepository.save(order));
@@ -528,6 +541,21 @@ public class OrderService {
         order.transitionTo(Order.OrderStatus.CANCELLED, reason, changedBy);
         order.setCancelledReason(reason);
         orderRepository.save(order);
+
+        // Gửi thông báo realtime
+        try {
+            Map<String, Object> adminPayload = Map.of("type", "ORDER_STATUS_UPDATED", "orderId", order.getId(), "orderCode", order.getCode());
+            messagingTemplate.convertAndSend("/topic/admin/new-order", adminPayload);
+            if (order.getAssignedWarehouseId() != null) {
+                messagingTemplate.convertAndSend("/topic/warehouse/" + order.getAssignedWarehouseId() + "/new-order", adminPayload);
+            }
+            if (order.getCustomerId() != null) {
+                Customer customer = customerRepository.findById(order.getCustomerId()).orElse(null);
+                if (customer != null && customer.getUserId() != null) {
+                    messagingTemplate.convertAndSend("/topic/user/" + customer.getUserId() + "/orders", adminPayload);
+                }
+            }
+        } catch (Exception e) {}
     }
 
     private void doCancelOrderWithCleanup(Order order, String reason, String changedBy) {
@@ -580,6 +608,21 @@ public class OrderService {
                 recordBankTransferRevenue(order, "SYSTEM_" + gateway);
             }
             orderRepository.save(order);
+
+            // Gửi thông báo realtime
+            try {
+                Map<String, Object> adminPayload = Map.of("type", "ORDER_STATUS_UPDATED", "orderId", order.getId(), "orderCode", order.getCode());
+                messagingTemplate.convertAndSend("/topic/admin/new-order", adminPayload);
+                if (order.getAssignedWarehouseId() != null) {
+                    messagingTemplate.convertAndSend("/topic/warehouse/" + order.getAssignedWarehouseId() + "/new-order", adminPayload);
+                }
+                if (order.getCustomerId() != null) {
+                    Customer customer = customerRepository.findById(order.getCustomerId()).orElse(null);
+                    if (customer != null && customer.getUserId() != null) {
+                        messagingTemplate.convertAndSend("/topic/user/" + customer.getUserId() + "/orders", adminPayload);
+                    }
+                }
+            } catch (Exception e) {}
         }
     }
 

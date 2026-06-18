@@ -22,6 +22,7 @@ import sme.backend.security.oauth2.CustomOAuth2UserService;
 import sme.backend.security.oauth2.HttpCookieOAuth2AuthorizationRequestRepository;
 import sme.backend.security.oauth2.OAuth2AuthenticationFailureHandler;
 import sme.backend.security.oauth2.OAuth2AuthenticationSuccessHandler;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
@@ -37,6 +38,7 @@ public class SecurityConfig {
     private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
     private final HttpCookieOAuth2AuthorizationRequestRepository httpCookieOAuth2AuthorizationRequestRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CorsConfigurationSource corsConfigurationSource;
 
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
@@ -58,8 +60,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
 
                 // CORS xử lý bởi CorsConfig bean
-                .cors(cors -> {
-                })
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
 
                 // Stateless session (JWT)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

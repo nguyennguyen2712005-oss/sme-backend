@@ -160,9 +160,6 @@ public class NotificationService {
                 "minQuantity", minQty,
                 "productName", productName,
                 "warehouseName", warehouseName);
-        messagingTemplate.convertAndSend(topic, payload);
-        messagingTemplate.convertAndSend("/topic/admin/low-stock", payload);
-
         // Tạo thông báo lưu vào DB với tên đầy đủ cho tất cả Quản lý kho & Admin
         saveNotificationForRecipients(
                 "LOW_STOCK",
@@ -172,6 +169,9 @@ public class NotificationService {
                         productName, warehouseName, currentQty, minQty),
                 payload,
                 inventory.getWarehouseId());
+
+        messagingTemplate.convertAndSend(topic, payload);
+        messagingTemplate.convertAndSend("/topic/admin/low-stock", payload);
         log.info("Low stock notification saved and sent for product: {} at warehouse: {}", productName, warehouseName);
     }
 
@@ -222,15 +222,15 @@ public class NotificationService {
                 "productName", productName,
                 "warehouseName", warehouseName);
 
-        messagingTemplate.convertAndSend(topic, payload);
-        messagingTemplate.convertAndSend("/topic/admin/low-stock", payload);
-
         saveNotificationForRecipients(
                 "OUT_OF_STOCK",
                 "🛑 Hết hàng",
                 String.format("🛑 Sản phẩm '%s' tại kho '%s' đã hết hàng!", productName, warehouseName),
                 payload,
                 inventory.getWarehouseId());
+
+        messagingTemplate.convertAndSend(topic, payload);
+        messagingTemplate.convertAndSend("/topic/admin/low-stock", payload);
     }
 
     @Async
@@ -245,8 +245,6 @@ public class NotificationService {
                 "orderCode", order.getCode(),
                 "warehouseName", warehouseName);
 
-        messagingTemplate.convertAndSend(topic, payload);
-
         saveNotificationForRecipients(
                 "IMPORT_SUCCESS",
                 "✅ Nhập kho thành công",
@@ -254,19 +252,21 @@ public class NotificationService {
                         warehouseName),
                 payload,
                 warehouseId);
+
+        messagingTemplate.convertAndSend(topic, payload);
+        messagingTemplate.convertAndSend("/topic/admin/inventory", payload);
     }
 
     @Async
     public void notifyNewOrder(Order order, UUID warehouseId) {
         String topic = "/topic/warehouse/" + warehouseId + "/new-order";
 
-        Map<String, Object> payload = Map.of(
-                "type", "NEW_ORDER",
-                "orderId", order.getId(),
-                "orderCode", order.getCode(),
-                "amount", order.getFinalAmount() != null ? order.getFinalAmount() : 0,
-                "type_order", order.getType() != null ? order.getType().name() : "DELIVERY");
-        messagingTemplate.convertAndSend(topic, payload);
+        Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "NEW_ORDER");
+        payload.put("orderId", order.getId());
+        payload.put("orderCode", order.getCode());
+        payload.put("amount", order.getFinalAmount() != null ? order.getFinalAmount() : 0);
+        payload.put("type_order", order.getType() != null ? order.getType().name() : "DELIVERY");
 
         saveNotificationForRecipients(
                 "NEW_ORDER",
@@ -275,6 +275,9 @@ public class NotificationService {
                         order.getCode(), order.getFinalAmount() != null ? order.getFinalAmount() : 0),
                 payload,
                 warehouseId);
+
+        messagingTemplate.convertAndSend(topic, payload);
+        messagingTemplate.convertAndSend("/topic/admin/new-order", payload);
 
         log.debug("New order notification saved and sent: order={}", order.getCode());
     }
@@ -289,8 +292,6 @@ public class NotificationService {
                 "cashierId", shift.getCashierId(),
                 "discrepancyAmount", shift.getDiscrepancyAmount() != null ? shift.getDiscrepancyAmount() : 0);
 
-        messagingTemplate.convertAndSend(topic, payload);
-
         saveNotificationForRecipients(
                 "SHIFT_PENDING_APPROVAL",
                 "🔒 Đóng ca cần duyệt",
@@ -298,6 +299,9 @@ public class NotificationService {
                         shift.getId()),
                 payload,
                 shift.getWarehouseId());
+
+        messagingTemplate.convertAndSend(topic, payload);
+        messagingTemplate.convertAndSend("/topic/admin/shift-alert", payload);
         log.debug("Shift closed notification saved and sent: shift={}", shift.getId());
     }
 
@@ -309,14 +313,15 @@ public class NotificationService {
                 "type", "TRANSFER_ARRIVED",
                 "transferId", transferId);
 
-        messagingTemplate.convertAndSend(topic, payload);
-
         saveNotificationForRecipients(
                 "TRANSFER_ARRIVED",
                 "📦 Cập nhật trạng thái chuyển kho",
                 "Một phiếu chuyển kho liên quan đến chi nhánh của bạn vừa được cập nhật.",
                 payload,
                 toWarehouseId);
+
+        messagingTemplate.convertAndSend(topic, payload);
+        messagingTemplate.convertAndSend("/topic/admin/transfer", payload);
     }
 
     public void markAsRead(UUID notificationId) {

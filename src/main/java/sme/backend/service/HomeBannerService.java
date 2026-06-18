@@ -26,6 +26,15 @@ public class HomeBannerService {
         return homeBannerRepository.findActiveBanners();
     }
 
+    @Transactional(readOnly = true)
+    public List<HomeBanner> getAllBanners(String bannerType) {
+        if (bannerType != null && !bannerType.isBlank()) {
+            return homeBannerRepository
+                    .findByBannerTypeOrderBySortOrderAsc(HomeBanner.BannerType.valueOf(bannerType));
+        }
+        return homeBannerRepository.findAllByOrderBySortOrderAsc();
+    }
+
     @Transactional
     public HomeBanner createBanner(CreateBannerRequest req) {
         HomeBanner banner = HomeBanner.builder()
