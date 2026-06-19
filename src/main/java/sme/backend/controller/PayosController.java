@@ -38,7 +38,7 @@ public class PayosController {
     private final RedisTemplate<String, Object> redisTemplate;
     private final SimpMessagingTemplate messagingTemplate;
 
-    @Value("${payos.return-url:http://localhost:3000/payment/payos-return}")
+    @Value("${payos.return-url:https://sme-frontend-nine.vercel.app/payment/return}")
     private String defaultReturnUrl;
 
     @PostMapping("/create/{orderId}")

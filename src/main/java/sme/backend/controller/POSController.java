@@ -228,9 +228,9 @@ public class POSController {
         String qrCode = null;
 
         if ("VNPAY".equalsIgnoreCase(gateway)) {
-            checkoutUrl = vnPayService.createPaymentUrl(orderCodeStr, finalAmount.longValue(), description, "http://localhost:3000/pos/payment-return", "127.0.0.1");
+            checkoutUrl = vnPayService.createPaymentUrl(orderCodeStr, finalAmount.longValue(), description, "https://sme-frontend-nine.vercel.app/pos/payment-return", "127.0.0.1");
         } else {
-            Map<String, Object> payosRes = payosService.createPaymentLink(orderCodeStr, finalAmount.longValue(), description, "http://localhost:3000/pos/payment-return", "http://localhost:3000/pos/payment-return");
+            Map<String, Object> payosRes = payosService.createPaymentLink(orderCodeStr, finalAmount.longValue(), description, "https://sme-frontend-nine.vercel.app/pos/payment-return", "https://sme-frontend-nine.vercel.app/pos/payment-return");
             if (payosRes.containsKey("data") && payosRes.get("data") != null) {
                 Map<String, Object> data = (Map<String, Object>) payosRes.get("data");
                 checkoutUrl = (String) data.get("checkoutUrl");

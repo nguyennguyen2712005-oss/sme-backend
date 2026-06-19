@@ -41,7 +41,7 @@ public class VnPayController {
     private final RedisTemplate<String, Object> redisTemplate;
     private final SimpMessagingTemplate messagingTemplate;
 
-    @Value("${vnpay.return-url:http://localhost:3000/payment/vnpay-return}")
+    @Value("${vnpay.return-url:https://sme-frontend-nine.vercel.app/payment/return}")
     private String defaultReturnUrl;
 
     @PostMapping("/create/{orderId}")
