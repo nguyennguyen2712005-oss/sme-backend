@@ -41,7 +41,7 @@ public class EmailService {
             String subject = "";
             String htmlContent = "";
 
-            if ("PENDING".equals(status)) {
+            if ("PENDING".equals(status) || "WAITING_FOR_CONSOLIDATION".equals(status)) {
                 subject = "Xác nhận đơn hàng #" + orderCode;
                 htmlContent = String.format(
                         "<h3>Xin chào %s,</h3>" +
