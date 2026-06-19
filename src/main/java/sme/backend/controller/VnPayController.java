@@ -142,6 +142,7 @@ public class VnPayController {
         }
 
         if ("00".equals(vnp_ResponseCode)) {
+            orderService.markAsPaid(order.getId(), "VNPay");
             orderService.updateStatus(order.getId(), Order.OrderStatus.PENDING.name(), "Đã thanh toán qua VNPay", null, "VNPay", "SYSTEM");
             response.put("RspCode", "00");
             response.put("Message", "Confirm Success");

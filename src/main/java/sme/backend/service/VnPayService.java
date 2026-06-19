@@ -69,6 +69,7 @@ public class VnPayService {
                     hashData.append(fieldName);
                     hashData.append('=');
                     hashData.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII.toString()));
+                    hashData.append('&');
                     
                     query.append(URLEncoder.encode(fieldName, StandardCharsets.US_ASCII.toString()));
                     query.append('=');
