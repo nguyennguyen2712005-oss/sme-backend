@@ -83,7 +83,8 @@ public class VnPayService {
         }
 
         String queryUrl = query.substring(0, query.length() - 1);
-        String vnp_SecureHash = HmacUtil.hmacSha512(secretKey, hashData.substring(0, hashData.length() - 1));
+        String cleanSecret = secretKey != null ? secretKey.replace("\"", "").trim() : "";
+        String vnp_SecureHash = HmacUtil.hmacSha512(cleanSecret, hashData.substring(0, hashData.length() - 1));
         queryUrl += "&vnp_SecureHash=" + vnp_SecureHash;
         
         return vnp_PayUrl + "?" + queryUrl;
@@ -117,7 +118,8 @@ public class VnPayService {
                 }
             }
 
-            String signValue = HmacUtil.hmacSha512(secretKey, hashData.substring(0, hashData.length() - 1));
+            String cleanSecret = secretKey != null ? secretKey.replace("\"", "").trim() : "";
+            String signValue = HmacUtil.hmacSha512(cleanSecret, hashData.substring(0, hashData.length() - 1));
             return signValue.equals(vnp_SecureHash);
         } catch (Exception e) {
             log.error("Lỗi xác thực IPN VNPay: ", e);
