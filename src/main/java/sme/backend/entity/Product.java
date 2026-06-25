@@ -62,6 +62,10 @@ public class Product extends BaseEntity {
     @Builder.Default
     private Boolean isActive = true;
 
+    @Column(name = "is_published")
+    @Builder.Default
+    private Boolean isPublished = false;
+
     // === THÔNG TIN SÁCH (BOOKLY) ===
     @Column(name = "cover_price", precision = 19, scale = 4)
     private BigDecimal coverPrice;

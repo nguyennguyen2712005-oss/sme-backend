@@ -1,6 +1,6 @@
 package sme.backend.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnore; // 1. Bổ sung import này
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -13,7 +13,7 @@ import java.util.UUID;
 @Builder
 public class TransferItem extends BaseSimpleEntity {
 
-    @JsonIgnore // 2. BỔ SUNG DÒNG NÀY ĐỂ NGẮT ĐỆ QUY
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "transfer_id", nullable = false)
     private InternalTransfer transfer;
@@ -27,4 +27,13 @@ public class TransferItem extends BaseSimpleEntity {
     @Column(name = "received_qty")
     @Builder.Default
     private Integer receivedQty = 0;
+
+    /** Số lượng chênh lệch (sent - received). > 0 nghĩa là nhận thiếu. */
+    @Column(name = "discrepancy_qty", nullable = false)
+    @Builder.Default
+    private Integer discrepancyQty = 0;
+
+    /** Lý do chênh lệch — bắt buộc khi discrepancyQty > 0 */
+    @Column(name = "discrepancy_reason", columnDefinition = "TEXT")
+    private String discrepancyReason;
 }

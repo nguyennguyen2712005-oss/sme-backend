@@ -25,12 +25,33 @@ public class PurchaseOrder extends BaseEntity {
     @Column(name = "warehouse_id", nullable = false)
     private UUID warehouseId;
 
-    // ĐÃ SỬA: Đổi tên biến và tên cột để không xung đột với BaseEntity
     @Column(name = "created_by_user_id", nullable = false)
     private UUID createdByUserId;
 
+    /** Role của người tạo phiếu — dùng cho logic duyệt chéo */
+    @Column(name = "creator_role", length = 30)
+    private String creatorRole;
+
     @Column(name = "approved_by")
     private UUID approvedBy;
+
+    @Column(name = "approved_at")
+    private Instant approvedAt;
+
+    @Column(name = "rejected_by")
+    private UUID rejectedBy;
+
+    @Column(name = "rejected_at")
+    private Instant rejectedAt;
+
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
+    private String rejectionReason;
+
+    @Column(name = "received_by")
+    private UUID receivedBy;
+
+    @Column(name = "received_at")
+    private Instant receivedAt;
 
     @Column(name = "total_amount", nullable = false, precision = 19, scale = 4)
     @Builder.Default
@@ -41,10 +62,12 @@ public class PurchaseOrder extends BaseEntity {
     private BigDecimal paidAmount = BigDecimal.ZERO;
 
     /**
-     * DRAFT      → Mới tạo, chưa gửi
-     * PENDING    → Chờ duyệt
-     * COMPLETED  → Đã nhập kho thành công
-     * CANCELLED  → Đã hủy
+     * DRAFT           → Mới tạo, chờ gửi duyệt
+     * PENDING_APPROVAL → Đã gửi, chờ duyệt (cross-approval)
+     * APPROVED        → Đã duyệt, chờ nhận hàng thực tế
+     * REJECTED        → Bị từ chối (có lý do)
+     * COMPLETED       → Đã nhận hàng, đã nhập kho
+     * CANCELLED       → Đã hủy (có lý do)
      */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
@@ -54,15 +77,16 @@ public class PurchaseOrder extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String note;
 
-    @Column(name = "approved_at")
-    private Instant approvedAt;
+    /** Lý do hủy phiếu — bắt buộc khi hủy */
+    @Column(name = "cancel_reason", columnDefinition = "TEXT")
+    private String cancelReason;
 
     @OneToMany(mappedBy = "purchaseOrder", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<PurchaseItem> items = new ArrayList<>();
 
     public enum PurchaseStatus {
-        DRAFT, PENDING, COMPLETED, CANCELLED
+        DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, COMPLETED, CANCELLED
     }
 
     public void addItem(PurchaseItem item) {

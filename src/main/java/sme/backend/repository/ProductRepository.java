@@ -98,6 +98,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             WHERE (:categoryId IS NULL OR p.categoryId IN (SELECT c.id FROM Category c WHERE c.id = :categoryId OR c.parentId = :categoryId))
             AND (:supplierId IS NULL OR p.supplierId = :supplierId)
             AND (:isActive IS NULL OR p.isActive = :isActive)
+            AND (:isPublished IS NULL OR p.isPublished = :isPublished)
             AND (:minPrice IS NULL OR p.retailPrice >= :minPrice)
             AND (:maxPrice IS NULL OR p.retailPrice <= :maxPrice)
             AND (:minRating IS NULL OR p.averageRating >= :minRating)
@@ -107,11 +108,12 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             OR LOWER(p.isbnBarcode) LIKE LOWER(CONCAT('%', :keyword, '%'))
             OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :keyword, '%')))
             """)
-    Page<Product> searchProducts(@Param("keyword") String keyword, 
+    Page<Product> searchProducts(@Param("keyword") String keyword,
                                  @Param("slugKeyword") String slugKeyword,
-                                 @Param("categoryId") UUID categoryId, 
-                                 @Param("supplierId") UUID supplierId, 
+                                 @Param("categoryId") UUID categoryId,
+                                 @Param("supplierId") UUID supplierId,
                                  @Param("isActive") Boolean isActive,
+                                 @Param("isPublished") Boolean isPublished,
                                  @Param("minPrice") Double minPrice,
                                  @Param("maxPrice") Double maxPrice,
                                  @Param("minRating") Double minRating,

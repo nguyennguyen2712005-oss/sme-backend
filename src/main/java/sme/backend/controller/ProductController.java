@@ -40,16 +40,17 @@ public class ProductController {
     public ResponseEntity<ApiResponse<PageResponse<ProductResponse>>> search(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) UUID supplierId, // ĐÃ THÊM MỚI
+            @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) UUID warehouseId,
-            @RequestParam(required = false) Boolean isActive, 
+            @RequestParam(required = false) Boolean isActive,
+            @RequestParam(required = false) Boolean isPublished,
             @RequestParam(required = false) Double minPrice,
             @RequestParam(required = false) Double maxPrice,
             @RequestParam(required = false) Double minRating,
             @RequestParam(required = false) String sortBy,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        
+
         Sort sort = Sort.by("name");
         if (sortBy != null && !sortBy.trim().isEmpty()) {
             switch (sortBy) {
@@ -69,10 +70,10 @@ public class ProductController {
                     sort = Sort.by("name");
             }
         }
-        
+
         var pageable = PageRequest.of(page, size, sort);
         return ResponseEntity.ok(ApiResponse.ok(
-                PageResponse.of(productService.search(keyword, categoryId, supplierId, warehouseId, isActive, minPrice, maxPrice, minRating, pageable))));
+                PageResponse.of(productService.search(keyword, categoryId, supplierId, warehouseId, isActive, isPublished, minPrice, maxPrice, minRating, pageable))));
     }
 
     @GetMapping("/export")
@@ -82,12 +83,13 @@ public class ProductController {
             @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) Boolean isActive,
+            @RequestParam(required = false) Boolean isPublished,
             @RequestParam(required = false) Double minPrice,
             @RequestParam(required = false) Double maxPrice,
             @RequestParam(required = false) Double minRating) throws IOException {
-        
+
         var pageable = PageRequest.of(0, 5000, Sort.by("name"));
-        List<ProductResponse> products = productService.search(keyword, categoryId, supplierId, warehouseId, isActive, minPrice, maxPrice, minRating, pageable).getContent();
+        List<ProductResponse> products = productService.search(keyword, categoryId, supplierId, warehouseId, isActive, isPublished, minPrice, maxPrice, minRating, pageable).getContent();
         
         byte[] excelBytes = excelExportService.exportProductsToExcel(products);
 

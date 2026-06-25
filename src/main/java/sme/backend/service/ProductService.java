@@ -77,6 +77,10 @@ public class ProductService {
             primaryImage = req.getImageUrl();
         }
 
+        boolean isAdmin = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+
         Product product = Product.builder()
                 .categoryId(req.getCategoryId()).supplierId(req.getSupplierId())
                 .isbnBarcode(req.getIsbnBarcode()).sku(req.getSku()).name(req.getName())
@@ -89,6 +93,7 @@ public class ProductService {
                 .language(req.getLanguage() != null ? req.getLanguage() : "Tiếng Việt")
                 .authorId(req.getAuthorId())
                 .author(req.getAuthor())
+                .isPublished(isAdmin && Boolean.TRUE.equals(req.getIsPublished()))
                 .isActive(true).build();
 
         Product saved = productRepository.save(product);
@@ -156,12 +161,18 @@ public class ProductService {
         if (req.getSku() != null) product.setSku(req.getSku());
         if (req.getDescription() != null) product.setDescription(req.getDescription());
 
-        boolean isManager = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_MANAGER"));
+        var authorities = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getAuthorities();
+        boolean isManager = authorities.stream().anyMatch(a -> a.getAuthority().equals("ROLE_MANAGER"));
+        boolean isAdmin   = authorities.stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
 
         if (!isManager) {
             if (req.getRetailPrice() != null) product.setRetailPrice(req.getRetailPrice());
             if (req.getWholesalePrice() != null) product.setWholesalePrice(req.getWholesalePrice());
             if (req.getCoverPrice() != null) product.setCoverPrice(req.getCoverPrice());
+        }
+        if (isAdmin && req.getIsPublished() != null) {
+            product.setIsPublished(req.getIsPublished());
         }
 
         if (req.getCategoryId() != null) product.setCategoryId(req.getCategoryId());
@@ -309,9 +320,9 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public Page<ProductResponse> search(String keyword, UUID categoryId, UUID supplierId, UUID warehouseId,
-                                         Boolean isActive, Double minPrice, Double maxPrice, Double minRating, Pageable pageable) {
+                                         Boolean isActive, Boolean isPublished, Double minPrice, Double maxPrice, Double minRating, Pageable pageable) {
         String slugKeyword = keyword == null ? "" : generateSlug(keyword).replace("-", "%");
-        Page<Product> productPage = productRepository.searchProducts(keyword, slugKeyword, categoryId, supplierId, isActive, minPrice, maxPrice, minRating, pageable);
+        Page<Product> productPage = productRepository.searchProducts(keyword, slugKeyword, categoryId, supplierId, isActive, isPublished, minPrice, maxPrice, minRating, pageable);
         if (productPage.isEmpty()) return productPage.map(p -> mapToResponse(p, 0));
 
         List<UUID> categoryIds = productPage.getContent().stream()
@@ -392,6 +403,7 @@ public class ProductService {
                 .imageUrl(p.getImageUrl())       // ảnh đại diện (nhanh)
                 .imageUrls(imageUrls)            // toàn bộ ảnh (khi cần)
                 .unit(p.getUnit()).weight(p.getWeight()).isActive(p.getIsActive())
+                .isPublished(p.getIsPublished())
                 .createdAt(p.getCreatedAt()).availableQuantity(availableQty)
                 .coverPrice(p.getCoverPrice())
                 .slug(p.getSlug())

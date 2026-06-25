@@ -30,6 +30,7 @@ public class ProductResponse {
     private String unit;
     private BigDecimal weight;
     private Boolean isActive;
+    private Boolean isPublished;
     private Instant createdAt;
     private Integer availableQuantity;
 

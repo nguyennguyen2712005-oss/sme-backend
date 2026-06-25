@@ -17,9 +17,6 @@
 
         import java.time.Duration;
 
-        import org.springframework.context.annotation.Profile;
-
-        // ĐÃ MỞ LẠI 2 DÒNG NÀY ĐỂ KÍCH HOẠT REDIS CACHE [cite: 1373]
         @Configuration
         @EnableCaching
         public class RedisConfig {

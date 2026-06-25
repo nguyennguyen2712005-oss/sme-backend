@@ -113,4 +113,10 @@ public class Inventory {
         this.inTransit -= amount;
         this.quantity += amount;
     }
+
+    /** Hoàn hàng về kho xuất khi kho nhập từ chối toàn bộ (REJECTED_BY_RECEIVER) */
+    public void reverseDispatch(int amount) {
+        this.quantity += amount;
+        this.inTransit = Math.max(0, this.inTransit - amount);
+    }
 }

@@ -27,14 +27,14 @@ public class CategoryController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<CategoryResponse>> create(@Valid @RequestBody CategoryRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created(categoryService.createCategory(req)));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<CategoryResponse>> update(@PathVariable UUID id, @RequestBody CategoryRequest req) {
         return ResponseEntity.ok(ApiResponse.ok(categoryService.updateCategory(id, req)));
     }

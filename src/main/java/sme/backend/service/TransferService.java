@@ -1,4 +1,4 @@
- package sme.backend.service;
+package sme.backend.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,12 +10,12 @@ import sme.backend.entity.*;
 import sme.backend.exception.BusinessException;
 import sme.backend.exception.ResourceNotFoundException;
 import sme.backend.repository.*;
+import sme.backend.security.UserPrincipal;
+import sme.backend.util.ApprovalUtils;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import sme.backend.security.UserPrincipal;
-import sme.backend.entity.User;
 
 @Service
 @RequiredArgsConstructor
@@ -25,15 +25,16 @@ public class TransferService {
     private final InternalTransferRepository transferRepository;
     private final InventoryService inventoryService;
     private final InventoryRepository inventoryRepository;
-    private final ProductRepository productRepository;
+
     private final NotificationService notificationService;
-    private final OrderRepository orderRepository; 
+    private final OrderRepository orderRepository;
     private final UserRepository userRepository;
 
+    // ─── TẠO PHIẾU (DRAFT) ──────────────────────────────────────────────────
     @Transactional
     public InternalTransfer createTransfer(UUID fromWarehouseId, UUID toWarehouseId,
                                            List<TransferItemRequest> items,
-                                           String note, UUID createdBy) {
+                                           String note, UUID createdBy, String creatorRole) {
         if (fromWarehouseId.equals(toWarehouseId)) {
             throw new BusinessException("SAME_WAREHOUSE", "Kho nguồn và kho đích không thể giống nhau");
         }
@@ -41,9 +42,11 @@ public class TransferService {
         for (TransferItemRequest item : items) {
             Inventory inv = inventoryRepository
                     .findByProductIdAndWarehouseId(item.productId(), fromWarehouseId)
-                    .orElseThrow(() -> new BusinessException("NO_INVENTORY", "Không tìm thấy tồn kho sản phẩm: " + item.productId()));
+                    .orElseThrow(() -> new BusinessException("NO_INVENTORY",
+                            "Không tìm thấy tồn kho sản phẩm: " + item.productId()));
             if (inv.getAvailableQuantity() < item.quantity()) {
-                throw new BusinessException("INSUFFICIENT_STOCK", "Không đủ hàng để chuyển. Khả dụng: " + inv.getAvailableQuantity());
+                throw new BusinessException("INSUFFICIENT_STOCK",
+                        "Không đủ hàng để chuyển. Khả dụng: " + inv.getAvailableQuantity());
             }
         }
 
@@ -52,6 +55,7 @@ public class TransferService {
                 .fromWarehouseId(fromWarehouseId)
                 .toWarehouseId(toWarehouseId)
                 .createdByUserId(createdBy)
+                .creatorRole(creatorRole)
                 .status(InternalTransfer.TransferStatus.DRAFT)
                 .note(note)
                 .build();
@@ -63,22 +67,21 @@ public class TransferService {
         return transferRepository.save(transfer);
     }
 
+    // ─── CẬP NHẬT (chỉ khi DRAFT) ───────────────────────────────────────────
     @Transactional
     public InternalTransfer updateTransfer(UUID transferId, UUID toWarehouseId,
                                            List<TransferItemRequest> items,
                                            String note, UUID updatedBy) {
-        
         InternalTransfer transfer = transferRepository.findByIdWithItems(transferId)
                 .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
         if (transfer.getStatus() != InternalTransfer.TransferStatus.DRAFT) {
             throw new BusinessException("INVALID_STATUS", "Chỉ có thể sửa phiếu ở trạng thái DRAFT");
         }
-        
         if (transfer.getReferenceOrderId() != null) {
-            throw new BusinessException("AUTO_TRANSFER_LOCKED", "Không thể sửa thủ công phiếu chuyển kho gom hàng hệ thống tự tạo. Vui lòng hủy đơn hàng nếu cần thay đổi.");
+            throw new BusinessException("AUTO_TRANSFER_LOCKED",
+                    "Không thể sửa phiếu chuyển kho gom hàng do hệ thống tự tạo.");
         }
-
         if (transfer.getFromWarehouseId().equals(toWarehouseId)) {
             throw new BusinessException("SAME_WAREHOUSE", "Kho nguồn và kho đích không thể giống nhau");
         }
@@ -86,10 +89,11 @@ public class TransferService {
         for (TransferItemRequest item : items) {
             Inventory inv = inventoryRepository
                     .findByProductIdAndWarehouseId(item.productId(), transfer.getFromWarehouseId())
-                    .orElseThrow(() -> new BusinessException("NO_INVENTORY", "Không tìm thấy tồn kho sản phẩm: " + item.productId()));
-
+                    .orElseThrow(() -> new BusinessException("NO_INVENTORY",
+                            "Không tìm thấy tồn kho sản phẩm: " + item.productId()));
             if (inv.getAvailableQuantity() < item.quantity()) {
-                throw new BusinessException("INSUFFICIENT_STOCK", "Không đủ hàng để chuyển. Khả dụng: " + inv.getAvailableQuantity());
+                throw new BusinessException("INSUFFICIENT_STOCK",
+                        "Không đủ hàng để chuyển. Khả dụng: " + inv.getAvailableQuantity());
             }
         }
 
@@ -103,28 +107,129 @@ public class TransferService {
         return transferRepository.save(transfer);
     }
 
-    // XUẤT KHO
+    // ─── GỬI DUYỆT (DRAFT → PENDING_APPROVAL) — chỉ người tạo, chỉ Manager ──
+    @Transactional
+    public InternalTransfer submitForApproval(UUID transferId, UUID submittedBy) {
+        InternalTransfer transfer = transferRepository.findByIdWithItems(transferId)
+                .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
+
+        if (transfer.getStatus() != InternalTransfer.TransferStatus.DRAFT) {
+            throw new BusinessException("INVALID_STATUS", "Chỉ có thể gửi duyệt phiếu ở trạng thái DRAFT.");
+        }
+        if (transfer.getReferenceOrderId() != null) {
+            throw new BusinessException("AUTO_TRANSFER_LOCKED",
+                    "Phiếu chuyển kho tự động không cần duyệt.");
+        }
+        if (!transfer.getCreatedByUserId().equals(submittedBy)) {
+            throw new BusinessException("FORBIDDEN", "Chỉ người tạo phiếu mới có thể gửi duyệt.");
+        }
+        if (transfer.getItems() == null || transfer.getItems().isEmpty()) {
+            throw new BusinessException("EMPTY_ITEMS", "Phiếu chuyển phải có ít nhất một sản phẩm.");
+        }
+
+        User submitter = userRepository.findById(submittedBy)
+                .orElseThrow(() -> new ResourceNotFoundException("User", submittedBy));
+        if (submitter.getRole() != User.UserRole.ROLE_MANAGER) {
+            throw new BusinessException("FORBIDDEN",
+                    "Admin không có quyền gửi duyệt phiếu chuyển kho (Admin không hiện diện tại kho).");
+        }
+
+        transfer.setStatus(InternalTransfer.TransferStatus.PENDING_APPROVAL);
+        InternalTransfer saved = transferRepository.save(transfer);
+        notificationService.notifyTransferPendingApproval(saved);
+        log.info("Transfer submitted for approval: {}", saved.getCode());
+        return saved;
+    }
+
+    // ─── DUYỆT (PENDING_APPROVAL → APPROVED) — cross-approval ───────────────
+    @Transactional
+    public InternalTransfer approveTransfer(UUID transferId, UUID approvedBy) {
+        InternalTransfer transfer = transferRepository.findByIdWithItems(transferId)
+                .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
+
+        if (transfer.getStatus() != InternalTransfer.TransferStatus.PENDING_APPROVAL) {
+            throw new BusinessException("INVALID_STATUS",
+                    "Chỉ có thể duyệt phiếu ở trạng thái PENDING_APPROVAL.");
+        }
+
+        User approver = userRepository.findById(approvedBy)
+                .orElseThrow(() -> new ResourceNotFoundException("User", approvedBy));
+        if (!ApprovalUtils.canApprove(approver, transfer.getCreatedByUserId(),
+                transfer.getCreatorRole(), transfer.getFromWarehouseId())) {
+            throw new BusinessException("FORBIDDEN",
+                    "Bạn không có quyền duyệt phiếu này (vi phạm quy tắc duyệt chéo).");
+        }
+
+        transfer.setStatus(InternalTransfer.TransferStatus.APPROVED);
+        transfer.setApprovedBy(approvedBy);
+        transfer.setApprovedAt(Instant.now());
+        InternalTransfer saved = transferRepository.save(transfer);
+        notificationService.notifyTransferApproved(saved);
+        log.info("Transfer approved: {} by {}", saved.getCode(), approvedBy);
+        return saved;
+    }
+
+    // ─── TỪ CHỐI DUYỆT (PENDING_APPROVAL → REJECTED) — cross-approval ────────
+    @Transactional
+    public InternalTransfer rejectTransfer(UUID transferId, UUID rejectedBy, String reason) {
+        InternalTransfer transfer = transferRepository.findByIdWithItems(transferId)
+                .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
+
+        if (transfer.getStatus() != InternalTransfer.TransferStatus.PENDING_APPROVAL) {
+            throw new BusinessException("INVALID_STATUS",
+                    "Chỉ có thể từ chối phiếu ở trạng thái PENDING_APPROVAL.");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException("MISSING_REASON", "Vui lòng nhập lý do từ chối.");
+        }
+
+        User approver = userRepository.findById(rejectedBy)
+                .orElseThrow(() -> new ResourceNotFoundException("User", rejectedBy));
+        if (!ApprovalUtils.canApprove(approver, transfer.getCreatedByUserId(),
+                transfer.getCreatorRole(), transfer.getFromWarehouseId())) {
+            throw new BusinessException("FORBIDDEN",
+                    "Bạn không có quyền từ chối phiếu này (vi phạm quy tắc duyệt chéo).");
+        }
+
+        transfer.setStatus(InternalTransfer.TransferStatus.REJECTED);
+        transfer.setRejectedBy(rejectedBy);
+        transfer.setRejectedAt(Instant.now());
+        transfer.setRejectionReason(reason);
+        InternalTransfer saved = transferRepository.save(transfer);
+        notificationService.notifyTransferRejected(saved);
+        log.info("Transfer rejected: {} - reason: {}", saved.getCode(), reason);
+        return saved;
+    }
+
+    // ─── XUẤT KHO (APPROVED → DISPATCHED, hoặc DRAFT → DISPATCHED cho auto) ──
     @Transactional
     public InternalTransfer dispatch(UUID transferId, UUID dispatchedBy) {
         InternalTransfer transfer = transferRepository.findByIdWithItems(transferId)
                 .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
-        if (transfer.getStatus() != InternalTransfer.TransferStatus.DRAFT) {
-            throw new BusinessException("INVALID_STATUS", "Chỉ có thể xuất kho phiếu ở trạng thái DRAFT");
+        boolean isAutoTransfer = transfer.getReferenceOrderId() != null;
+
+        boolean validStatus = isAutoTransfer
+                ? transfer.getStatus() == InternalTransfer.TransferStatus.DRAFT
+                : transfer.getStatus() == InternalTransfer.TransferStatus.APPROVED;
+
+        if (!validStatus) {
+            String expected = isAutoTransfer ? "DRAFT" : "APPROVED";
+            throw new BusinessException("INVALID_STATUS",
+                    "Chỉ có thể xuất kho phiếu ở trạng thái " + expected + ".");
         }
 
         User user = userRepository.findById(dispatchedBy)
                 .orElseThrow(() -> new ResourceNotFoundException("User", dispatchedBy));
-        if (user.getRole() == User.UserRole.ROLE_MANAGER && !transfer.getFromWarehouseId().equals(user.getWarehouseId())) {
+        if (user.getRole() == User.UserRole.ROLE_MANAGER
+                && !transfer.getFromWarehouseId().equals(user.getWarehouseId())) {
             throw new BusinessException("FORBIDDEN", "Bạn không có quyền xuất kho này");
         }
-
-        boolean isAutoTransfer = transfer.getReferenceOrderId() != null;
 
         for (TransferItem item : transfer.getItems()) {
             if (isAutoTransfer) {
                 inventoryService.releaseReservation(
-                        item.getProductId(), transfer.getFromWarehouseId(), 
+                        item.getProductId(), transfer.getFromWarehouseId(),
                         item.getQuantity(), transfer.getReferenceOrderId(), dispatchedBy.toString()
                 );
             }
@@ -132,21 +237,24 @@ public class TransferService {
             Inventory inv = inventoryRepository
                     .findByProductAndWarehouseWithLock(item.getProductId(), transfer.getFromWarehouseId())
                     .orElseThrow(() -> new ResourceNotFoundException("Inventory product=" + item.getProductId()));
-            
+
             if (!isAutoTransfer && inv.getAvailableQuantity() < item.getQuantity()) {
-                throw new BusinessException("INSUFFICIENT_STOCK", "Không đủ hàng để chuyển. Khả dụng: " + inv.getAvailableQuantity());
+                throw new BusinessException("INSUFFICIENT_STOCK",
+                        "Không đủ hàng để chuyển. Khả dụng: " + inv.getAvailableQuantity());
             }
 
             int before = inv.getQuantity() != null ? inv.getQuantity() : 0;
             inv.dispatchForTransfer(item.getQuantity());
             inv = inventoryRepository.save(inv);
 
-            inventoryService.recordTransaction(inv, transfer.getId(), "TRANSFER_OUT", 
-                    -item.getQuantity(), before, inv.getQuantity(), dispatchedBy.toString(), "Xuất luân chuyển kho");
+            inventoryService.recordTransaction(inv, transfer.getId(), "TRANSFER_OUT",
+                    -item.getQuantity(), before, inv.getQuantity(), dispatchedBy.toString(),
+                    "Xuất luân chuyển kho");
         }
 
         transfer.setStatus(InternalTransfer.TransferStatus.DISPATCHED);
         transfer.setDispatchedAt(Instant.now());
+        transfer.setDispatchedBy(dispatchedBy.toString());
         transfer = transferRepository.save(transfer);
 
         notificationService.notifyTransferArrived(transfer.getId(), transfer.getToWarehouseId());
@@ -154,92 +262,109 @@ public class TransferService {
         return transfer;
     }
 
-    // NHẬN HÀNG (ĐÃ SỬA: XỬ LÝ NHẬN MỘT PHẦN)
+    // ─── NHẬN HÀNG (DISPATCHED → RECEIVED / RECEIVED_PARTIAL) ───────────────
     @Transactional
-    public InternalTransfer receive(UUID transferId, List<ReceiveItemRequest> receivedItems, UUID receivedBy) {
+    public InternalTransfer receive(UUID transferId, List<ReceiveItemRequest> receivedItems,
+                                    UUID receivedBy) {
         InternalTransfer transfer = transferRepository.findByIdWithItems(transferId)
                 .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
         if (transfer.getStatus() != InternalTransfer.TransferStatus.DISPATCHED) {
-            throw new BusinessException("INVALID_STATUS", "Chỉ có thể nhận hàng phiếu ở trạng thái DISPATCHED");
+            throw new BusinessException("INVALID_STATUS",
+                    "Chỉ có thể nhận hàng phiếu ở trạng thái DISPATCHED");
         }
 
         User user = userRepository.findById(receivedBy)
                 .orElseThrow(() -> new ResourceNotFoundException("User", receivedBy));
-        if (user.getRole() == User.UserRole.ROLE_MANAGER && !transfer.getToWarehouseId().equals(user.getWarehouseId())) {
+        if (user.getRole() == User.UserRole.ROLE_MANAGER
+                && !transfer.getToWarehouseId().equals(user.getWarehouseId())) {
             throw new BusinessException("FORBIDDEN", "Bạn không có quyền nhận hàng cho kho này");
         }
 
         boolean isAutoTransfer = transfer.getReferenceOrderId() != null;
+        boolean hasDiscrepancy = false;
 
         for (TransferItem item : transfer.getItems()) {
-            // Tìm số lượng thực nhận do Frontend gửi lên (mặc định là 0 nếu không tìm thấy)
-            int actualReceivedQty = receivedItems.stream()
+            ReceiveItemRequest req = receivedItems.stream()
                     .filter(ri -> ri.productId().equals(item.getProductId()))
-                    .map(ReceiveItemRequest::receivedQty)
                     .findFirst()
-                    .orElse(0);
+                    .orElse(null);
 
-            // Kiểm tra số lượng thực nhận không được lớn hơn số lượng xuất đi
+            int actualReceivedQty = (req != null) ? req.receivedQty() : 0;
+
             if (actualReceivedQty > item.getQuantity() || actualReceivedQty < 0) {
-                throw new BusinessException("INVALID_QUANTITY", 
-                    "Số lượng thực nhận không hợp lệ đối với sản phẩm: " + item.getProductId());
+                throw new BusinessException("INVALID_QUANTITY",
+                        "Số lượng thực nhận không hợp lệ đối với sản phẩm: " + item.getProductId());
             }
 
-            Inventory destInv = inventoryService.getOrCreate(item.getProductId(), transfer.getToWarehouseId());
-            int before = destInv.getQuantity() != null ? destInv.getQuantity() : 0;
-            
-            // CHỈ CỘNG VÀO KHO ĐÍCH SỐ LƯỢNG THỰC NHẬN
-            destInv.addQuantity(actualReceivedQty);
-            destInv = inventoryRepository.save(destInv);
+            int discrepancy = item.getQuantity() - actualReceivedQty;
+            if (discrepancy > 0) {
+                hasDiscrepancy = true;
+                String discrepancyReason = (req != null) ? req.discrepancyReason() : null;
+                if (discrepancyReason == null || discrepancyReason.isBlank()) {
+                    throw new BusinessException("MISSING_REASON",
+                            "Vui lòng nhập lý do chênh lệch cho sản phẩm: " + item.getProductId());
+                }
+                item.setDiscrepancyReason(discrepancyReason);
+            }
+            item.setDiscrepancyQty(discrepancy);
 
-            inventoryService.recordTransaction(destInv, transfer.getId(), "TRANSFER_IN", 
-                    actualReceivedQty, before, destInv.getQuantity(), receivedBy.toString(), 
-                    "Nhận hàng luân chuyển (Thực nhận: " + actualReceivedQty + "/" + item.getQuantity() + ")");
+            if (actualReceivedQty > 0) {
+                Inventory destInv = inventoryService.getOrCreate(item.getProductId(),
+                        transfer.getToWarehouseId());
+                int before = destInv.getQuantity() != null ? destInv.getQuantity() : 0;
+                destInv.addQuantity(actualReceivedQty);
+                destInv = inventoryRepository.save(destInv);
+                inventoryService.recordTransaction(destInv, transfer.getId(), "TRANSFER_IN",
+                        actualReceivedQty, before, destInv.getQuantity(), receivedBy.toString(),
+                        "Nhận hàng luân chuyển (Thực nhận: " + actualReceivedQty + "/" + item.getQuantity() + ")");
+            }
 
-            // TRỪ ĐI TOÀN BỘ SỐ LƯỢNG ĐÃ XUẤT KHỎI HÀNG ĐANG ĐI ĐƯỜNG CỦA KHO NGUỒN
-            inventoryRepository.findByProductIdAndWarehouseId(item.getProductId(), transfer.getFromWarehouseId())
+            // Xóa hàng đang đi đường tại kho nguồn
+            inventoryRepository.findByProductIdAndWarehouseId(
+                    item.getProductId(), transfer.getFromWarehouseId())
                     .ifPresent(srcInv -> {
                         srcInv.setInTransit(Math.max(0, srcInv.getInTransit() - item.getQuantity()));
                         inventoryRepository.save(srcInv);
                     });
 
-            // Ghi nhận số lượng thực nhận vào database
             item.setReceivedQty(actualReceivedQty);
 
-            if (isAutoTransfer) {
+            if (isAutoTransfer && actualReceivedQty > 0) {
                 inventoryService.reserveForOnlineOrder(
-                        item.getProductId(), transfer.getToWarehouseId(), 
-                        actualReceivedQty, // Chỉ reserve đúng số lượng thực nhận
-                        transfer.getReferenceOrderId(), receivedBy.toString()
+                        item.getProductId(), transfer.getToWarehouseId(),
+                        actualReceivedQty, transfer.getReferenceOrderId(), receivedBy.toString()
                 );
             }
         }
 
-        transfer.setStatus(InternalTransfer.TransferStatus.RECEIVED);
+        transfer.setStatus(hasDiscrepancy
+                ? InternalTransfer.TransferStatus.RECEIVED_PARTIAL
+                : InternalTransfer.TransferStatus.RECEIVED);
         transfer.setReceivedByUserId(receivedBy);
         transfer.setReceivedAt(Instant.now());
         transfer = transferRepository.save(transfer);
 
-        log.info("Transfer received: {} with partial check", transfer.getCode());
+        log.info("Transfer {}: {} by {}", transfer.getCode(), transfer.getStatus(), receivedBy);
         notificationService.notifyTransferArrived(transfer.getId(), transfer.getFromWarehouseId());
-        
-        // ĐÁNH THỨC ĐƠN HÀNG KHI ĐÃ NHẬN ĐỦ HÀNG GOM
+
         if (isAutoTransfer) {
             UUID orderId = transfer.getReferenceOrderId();
             transferRepository.flush();
-            List<InternalTransfer> allTransfersForOrder = transferRepository.findByReferenceOrderId(orderId);
-            
-            boolean isAllReceived = allTransfersForOrder.stream()
-                    .allMatch(t -> t.getStatus() == InternalTransfer.TransferStatus.RECEIVED || 
-                                   t.getStatus() == InternalTransfer.TransferStatus.CANCELLED);
+            List<InternalTransfer> allTransfers = transferRepository.findByReferenceOrderId(orderId);
 
-            if (isAllReceived) {
+            boolean allDone = allTransfers.stream()
+                    .allMatch(t -> t.getStatus() == InternalTransfer.TransferStatus.RECEIVED
+                               || t.getStatus() == InternalTransfer.TransferStatus.RECEIVED_PARTIAL
+                               || t.getStatus() == InternalTransfer.TransferStatus.CANCELLED);
+
+            if (allDone) {
                 orderRepository.findById(orderId).ifPresent(order -> {
                     if (order.getStatus() == Order.OrderStatus.WAITING_FOR_CONSOLIDATION) {
-                        order.transitionTo(Order.OrderStatus.PENDING, "Hệ thống tự động: Đã nhận đủ hàng luân chuyển", "SYSTEM");
+                        order.transitionTo(Order.OrderStatus.PENDING,
+                                "Hệ thống tự động: Đã nhận đủ hàng luân chuyển", "SYSTEM");
                         orderRepository.save(order);
-                        log.info("Đơn hàng {} đã gom đủ hàng. Trạng thái cập nhật thành PENDING", order.getCode());
+                        log.info("Order {} ready after transfer consolidation", order.getCode());
                     }
                 });
             }
@@ -248,40 +373,88 @@ public class TransferService {
         return transfer;
     }
 
-    // ─────────────────────────────────────────────────────────
-    // HỦY PHIẾU CHUYỂN KHO (CANCEL)
-    // ─────────────────────────────────────────────────────────
+    // ─── KHO NHẬP TỪ CHỐI (DISPATCHED → REJECTED_BY_RECEIVER) ───────────────
+    @Transactional
+    public InternalTransfer rejectReceive(UUID transferId, UUID rejectedBy, String reason) {
+        InternalTransfer transfer = transferRepository.findByIdWithItems(transferId)
+                .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
+
+        if (transfer.getStatus() != InternalTransfer.TransferStatus.DISPATCHED) {
+            throw new BusinessException("INVALID_STATUS",
+                    "Chỉ có thể từ chối nhận hàng phiếu ở trạng thái DISPATCHED.");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException("MISSING_REASON", "Vui lòng nhập lý do từ chối nhận hàng.");
+        }
+
+        User user = userRepository.findById(rejectedBy)
+                .orElseThrow(() -> new ResourceNotFoundException("User", rejectedBy));
+        if (user.getRole() == User.UserRole.ROLE_MANAGER
+                && !transfer.getToWarehouseId().equals(user.getWarehouseId())) {
+            throw new BusinessException("FORBIDDEN", "Bạn không có quyền từ chối nhận hàng cho kho này.");
+        }
+
+        // Hoàn toàn bộ hàng về kho xuất
+        for (TransferItem item : transfer.getItems()) {
+            inventoryRepository.findByProductIdAndWarehouseId(
+                    item.getProductId(), transfer.getFromWarehouseId())
+                    .ifPresent(srcInv -> {
+                        int before = srcInv.getQuantity() != null ? srcInv.getQuantity() : 0;
+                        srcInv.reverseDispatch(item.getQuantity());
+                        inventoryRepository.save(srcInv);
+                        inventoryService.recordTransaction(srcInv, transfer.getId(), "TRANSFER_REVERSE",
+                                item.getQuantity(), before, srcInv.getQuantity(), rejectedBy.toString(),
+                                "Hoàn hàng — kho nhập từ chối: " + reason);
+                    });
+        }
+
+        transfer.setStatus(InternalTransfer.TransferStatus.REJECTED_BY_RECEIVER);
+        transfer.setReceivedByUserId(rejectedBy);
+        transfer.setReceivedAt(Instant.now());
+        transfer.setCancelReason(reason);
+        InternalTransfer savedTransfer = transferRepository.save(transfer);
+
+        notificationService.notifyTransferRejectedByReceiver(savedTransfer);
+        log.info("Transfer {} rejected by receiver: reason={}", savedTransfer.getCode(), reason);
+        return savedTransfer;
+    }
+
+    // ─── HỦY — bắt buộc có lý do ─────────────────────────────────────────────
     @Transactional
     public InternalTransfer cancelTransfer(UUID transferId, UUID cancelledBy, String reason) {
         InternalTransfer transfer = transferRepository.findByIdWithItems(transferId)
                 .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
-        if (transfer.getStatus() != InternalTransfer.TransferStatus.DRAFT) {
-            throw new BusinessException("INVALID_STATUS", "Chỉ có thể hủy phiếu ở trạng thái DRAFT");
+        InternalTransfer.TransferStatus s = transfer.getStatus();
+        if (s != InternalTransfer.TransferStatus.DRAFT
+                && s != InternalTransfer.TransferStatus.PENDING_APPROVAL
+                && s != InternalTransfer.TransferStatus.REJECTED) {
+            throw new BusinessException("INVALID_STATUS",
+                    "Chỉ có thể hủy phiếu ở trạng thái DRAFT, PENDING_APPROVAL hoặc REJECTED.");
         }
-
         if (transfer.getReferenceOrderId() != null) {
-            throw new BusinessException("AUTO_TRANSFER_LOCKED", "Không thể hủy thủ công phiếu chuyển kho gom hàng do hệ thống tự tạo. Vui lòng hủy đơn hàng liên quan.");
+            throw new BusinessException("AUTO_TRANSFER_LOCKED",
+                    "Không thể hủy thủ công phiếu chuyển kho gom hàng do hệ thống tự tạo.");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException("MISSING_REASON", "Vui lòng nhập lý do hủy.");
         }
 
         transfer.setStatus(InternalTransfer.TransferStatus.CANCELLED);
-        
-        String currentNote = transfer.getNote() != null ? transfer.getNote() : "";
-        String cancelNote = "Đã hủy bởi người dùng. Lý do: " + (reason != null && !reason.isBlank() ? reason : "Không có");
-        transfer.setNote(currentNote.isEmpty() ? cancelNote : currentNote + " | " + cancelNote);
+        transfer.setCancelReason(reason);
 
         log.info("Transfer cancelled: {} by user: {}", transfer.getCode(), cancelledBy);
         return transferRepository.save(transfer);
     }
 
     @Transactional(readOnly = true)
-    public Page<InternalTransfer> searchTransfers(UUID warehouseId, String statusStr, String keyword, Pageable pageable) {
+    public Page<InternalTransfer> searchTransfers(UUID warehouseId, String statusStr,
+            String keyword, Pageable pageable) {
         InternalTransfer.TransferStatus status = null;
         if (statusStr != null && !statusStr.isBlank()) {
-            try { status = InternalTransfer.TransferStatus.valueOf(statusStr.toUpperCase()); } 
+            try { status = InternalTransfer.TransferStatus.valueOf(statusStr.toUpperCase()); }
             catch (IllegalArgumentException ignored) {}
         }
-        
         String kw = (keyword == null) ? "" : keyword.trim();
 
         if (warehouseId == null) {
@@ -302,20 +475,14 @@ public class TransferService {
     @Transactional(readOnly = true)
     public List<InternalTransfer> getTransfersByOrderId(UUID orderId, UserPrincipal currentUser) {
         List<InternalTransfer> transfers = transferRepository.findByReferenceOrderId(orderId);
-        
-        if (currentUser.getRole() == User.UserRole.ROLE_ADMIN) {
-            return transfers;
-        }
-        
+        if (currentUser.getRole() == User.UserRole.ROLE_ADMIN) return transfers;
         UUID userWarehouseId = currentUser.getWarehouseId();
         return transfers.stream()
-                .filter(t -> (t.getFromWarehouseId() != null && t.getFromWarehouseId().equals(userWarehouseId)) ||
-                             (t.getToWarehouseId() != null && t.getToWarehouseId().equals(userWarehouseId)))
+                .filter(t -> (t.getFromWarehouseId() != null && t.getFromWarehouseId().equals(userWarehouseId))
+                          || (t.getToWarehouseId() != null && t.getToWarehouseId().equals(userWarehouseId)))
                 .toList();
     }
 
     public record TransferItemRequest(UUID productId, int quantity) {}
-    
-    // THÊM MỚI RECORD NÀY ĐỂ NHẬN DỮ LIỆU THỰC NHẬN
-    public record ReceiveItemRequest(UUID productId, int receivedQty) {}
+    public record ReceiveItemRequest(UUID productId, int receivedQty, String discrepancyReason) {}
 }

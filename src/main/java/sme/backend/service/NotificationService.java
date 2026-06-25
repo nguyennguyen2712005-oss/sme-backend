@@ -324,6 +324,143 @@ public class NotificationService {
         messagingTemplate.convertAndSend("/topic/admin/transfer", payload);
     }
 
+    // ─── APPROVAL WORKFLOW NOTIFICATIONS ─────────────────────────────────────
+
+    private void notifyAdminsOnly(String type, String title, String message, Map<String, Object> payload) {
+        List<User> admins = userRepository.findByRoleAndIsActiveTrue(User.UserRole.ROLE_ADMIN);
+        for (User admin : admins) {
+            Notification n = Notification.builder()
+                    .type(type).title(title).message(message).payload(payload)
+                    .isRead(false).userId(admin.getId()).build();
+            notificationRepository.save(n);
+        }
+        messagingTemplate.convertAndSend("/topic/admin/approval", payload);
+    }
+
+    private void notifyManagersOfWarehouse(UUID warehouseId, String type, String title,
+                                           String message, Map<String, Object> payload) {
+        List<User> managers = userRepository.findActiveManagersByWarehouse(warehouseId);
+        for (User mgr : managers) {
+            Notification n = Notification.builder()
+                    .type(type).title(title).message(message).payload(payload)
+                    .isRead(false).userId(mgr.getId()).build();
+            notificationRepository.save(n);
+            messagingTemplate.convertAndSend("/topic/user/" + mgr.getId() + "/approval", payload);
+        }
+    }
+
+    private void notifySpecificUser(UUID userId, String type, String title, String message, Map<String, Object> payload) {
+        if (userId == null) return;
+        Notification n = Notification.builder()
+                .type(type).title(title).message(message).payload(payload)
+                .isRead(false).userId(userId).build();
+        notificationRepository.save(n);
+        messagingTemplate.convertAndSend("/topic/user/" + userId + "/approval", payload);
+    }
+
+    @Async
+    public void notifyPurchasePendingApproval(sme.backend.entity.PurchaseOrder po) {
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "PURCHASE_PENDING_APPROVAL");
+        payload.put("orderId", po.getId());
+        payload.put("orderCode", po.getCode());
+        if (po.getWarehouseId() != null) payload.put("warehouseId", po.getWarehouseId());
+
+        String title = "📋 Phiếu nhập chờ duyệt";
+        String msg = String.format("Phiếu nhập kho %s đang chờ duyệt.", po.getCode());
+
+        // Duyệt chéo: Manager tạo → Admin duyệt; Admin tạo → Manager kho liên quan duyệt
+        if ("ROLE_ADMIN".equals(po.getCreatorRole()) && po.getWarehouseId() != null) {
+            notifyManagersOfWarehouse(po.getWarehouseId(),
+                    "PURCHASE_PENDING_APPROVAL", title, msg, payload);
+        } else {
+            notifyAdminsOnly("PURCHASE_PENDING_APPROVAL", title, msg, payload);
+        }
+    }
+
+    @Async
+    public void notifyPurchaseApproved(sme.backend.entity.PurchaseOrder po) {
+        Map<String, Object> payload = Map.of(
+                "type", "PURCHASE_APPROVED",
+                "orderId", po.getId(),
+                "orderCode", po.getCode());
+        notifySpecificUser(po.getCreatedByUserId(), "PURCHASE_APPROVED", "✅ Phiếu nhập đã duyệt",
+                String.format("Phiếu nhập %s đã được duyệt. Vui lòng tiến hành nhận hàng.", po.getCode()), payload);
+    }
+
+    @Async
+    public void notifyPurchaseRejected(sme.backend.entity.PurchaseOrder po) {
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "PURCHASE_REJECTED");
+        payload.put("orderId", po.getId());
+        payload.put("orderCode", po.getCode());
+        payload.put("reason", po.getRejectionReason());
+        notifySpecificUser(po.getCreatedByUserId(), "PURCHASE_REJECTED", "❌ Phiếu nhập bị từ chối",
+                String.format("Phiếu nhập %s bị từ chối. Lý do: %s", po.getCode(), po.getRejectionReason()), payload);
+    }
+
+    @Async
+    public void notifyTransferPendingApproval(sme.backend.entity.InternalTransfer transfer) {
+        Map<String, Object> payload = Map.of(
+                "type", "TRANSFER_PENDING_APPROVAL",
+                "transferId", transfer.getId(),
+                "transferCode", transfer.getCode());
+        notifyAdminsOnly("TRANSFER_PENDING_APPROVAL", "📦 Phiếu chuyển kho chờ duyệt",
+                String.format("Phiếu chuyển kho %s đang chờ duyệt.", transfer.getCode()), payload);
+    }
+
+    @Async
+    public void notifyTransferApproved(sme.backend.entity.InternalTransfer transfer) {
+        Map<String, Object> payload = Map.of(
+                "type", "TRANSFER_APPROVED",
+                "transferId", transfer.getId(),
+                "transferCode", transfer.getCode());
+        notifySpecificUser(transfer.getCreatedByUserId(), "TRANSFER_APPROVED", "✅ Phiếu chuyển kho đã duyệt",
+                String.format("Phiếu chuyển %s đã duyệt. Có thể xuất kho.", transfer.getCode()), payload);
+    }
+
+    @Async
+    public void notifyTransferRejected(sme.backend.entity.InternalTransfer transfer) {
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "TRANSFER_REJECTED");
+        payload.put("transferId", transfer.getId());
+        payload.put("transferCode", transfer.getCode());
+        payload.put("reason", transfer.getRejectionReason());
+        notifySpecificUser(transfer.getCreatedByUserId(), "TRANSFER_REJECTED", "❌ Phiếu chuyển kho bị từ chối",
+                String.format("Phiếu chuyển %s bị từ chối. Lý do: %s",
+                        transfer.getCode(), transfer.getRejectionReason()), payload);
+    }
+
+    @Async
+    public void notifyTransferRejectedByReceiver(sme.backend.entity.InternalTransfer transfer) {
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "TRANSFER_REJECTED_BY_RECEIVER");
+        payload.put("transferId", transfer.getId());
+        payload.put("transferCode", transfer.getCode());
+        payload.put("reason", transfer.getCancelReason());
+        // Thông báo cho người tạo phiếu (kho nguồn) biết hàng bị từ chối
+        notifySpecificUser(transfer.getCreatedByUserId(), "TRANSFER_REJECTED_BY_RECEIVER",
+                "📦 Kho nhập từ chối nhận hàng",
+                String.format("Kho nhập đã từ chối nhận hàng phiếu %s. Hàng đã được hoàn về kho xuất. Lý do: %s",
+                        transfer.getCode(), transfer.getCancelReason()), payload);
+        // Cũng thông báo cho Admin
+        notifyAdminsOnly("TRANSFER_REJECTED_BY_RECEIVER",
+                "📦 Kho nhập từ chối nhận hàng",
+                String.format("Kho nhập đã từ chối nhận hàng phiếu %s. Lý do: %s",
+                        transfer.getCode(), transfer.getCancelReason()), payload);
+    }
+
+    @Async
+    public void notifyAdjustmentPendingApproval(sme.backend.entity.StockAdjustment adj) {
+        Map<String, Object> payload = Map.of(
+                "type", "ADJUSTMENT_PENDING_APPROVAL",
+                "adjustmentId", adj.getId(),
+                "adjustmentCode", adj.getCode(),
+                "warehouseId", adj.getWarehouseId());
+        notifyAdminsOnly("ADJUSTMENT_PENDING_APPROVAL", "📊 Phiếu kiểm kê chờ duyệt",
+                String.format("Phiếu kiểm kê %s đang chờ duyệt.", adj.getCode()), payload);
+    }
+
     public void markAsRead(UUID notificationId) {
         notificationRepository.findById(notificationId).ifPresent(n -> {
             n.setIsRead(true);

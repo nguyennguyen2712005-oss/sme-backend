@@ -17,6 +17,8 @@ import sme.backend.entity.User;
 import sme.backend.security.UserPrincipal;
 import sme.backend.service.PurchaseService;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -32,27 +34,63 @@ public class PurchaseController {
             @Valid @RequestBody CreatePurchaseOrderRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.created(purchaseService.createPurchaseOrder(req, principal.getId())));
+                .body(ApiResponse.created(purchaseService.createPurchaseOrder(
+                        req, principal.getId(), principal.getRole().name())));
     }
 
+    /** Chỉ người tạo phiếu mới được gửi duyệt (kiểm tra trong service) */
+    @PostMapping("/{id}/submit")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<PurchaseOrder>> submit(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.ok("Gửi duyệt phiếu nhập thành công",
+                purchaseService.submitForApproval(id, principal.getId())));
+    }
+
+    /** Duyệt chéo — canApprove() kiểm tra trong service */
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<PurchaseOrder>> approve(
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(ApiResponse.ok("Duyệt phiếu nhập kho thành công", purchaseService.approvePurchaseOrder(id, principal.getId())));
+        return ResponseEntity.ok(ApiResponse.ok("Duyệt phiếu nhập kho thành công",
+                purchaseService.approvePurchaseOrder(id, principal.getId())));
+    }
+
+    /** Từ chối — canApprove() kiểm tra trong service */
+    @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<PurchaseOrder>> reject(
+            @PathVariable UUID id,
+            @RequestBody Map<String, String> body,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        String reason = body != null ? body.getOrDefault("reason", "") : "";
+        return ResponseEntity.ok(ApiResponse.ok("Từ chối phiếu nhập kho thành công",
+                purchaseService.rejectPurchaseOrder(id, principal.getId(), reason)));
+    }
+
+    /** Nhận hàng — chỉ Manager kho (Admin không hiện diện tại kho) */
+    @PostMapping("/{id}/receive")
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<ApiResponse<PurchaseOrder>> receive(
+            @PathVariable UUID id,
+            @RequestBody List<PurchaseService.ReceiveItemRequest> receivedItems,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.ok("Nhận hàng thành công",
+                purchaseService.receivePurchaseOrder(id, receivedItems, principal.getId())));
     }
 
     @PostMapping("/{id}/cancel")
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<PurchaseOrder>> cancel(
             @PathVariable UUID id,
-            @RequestBody(required = false) java.util.Map<String, String> body) {
+            @RequestBody Map<String, String> body) {
         String reason = body != null ? body.getOrDefault("reason", "") : "";
-        return ResponseEntity.ok(ApiResponse.ok(purchaseService.cancelPurchaseOrder(id, reason)));
+        return ResponseEntity.ok(ApiResponse.ok("Hủy phiếu nhập thành công",
+                purchaseService.cancelPurchaseOrder(id, reason)));
     }
 
-    // ĐÃ SỬA: Nhận thêm param keyword và status
     @GetMapping
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<PageResponse<PurchaseOrder>>> getAll(
@@ -62,23 +100,18 @@ public class PurchaseController {
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        
-        UUID wid;
-        if (principal.getRole() == User.UserRole.ROLE_ADMIN) {
-            wid = warehouseId;
-        } else {
-            wid = principal.getWarehouseId();
-        }
+
+        UUID wid = principal.getRole() == User.UserRole.ROLE_ADMIN ? warehouseId : principal.getWarehouseId();
 
         PurchaseOrder.PurchaseStatus poStatus = null;
         if (status != null && !status.isBlank() && !status.equals("ALL")) {
-            try { poStatus = PurchaseOrder.PurchaseStatus.valueOf(status.toUpperCase()); } 
+            try { poStatus = PurchaseOrder.PurchaseStatus.valueOf(status.toUpperCase()); }
             catch (IllegalArgumentException ignored) {}
         }
 
-        return ResponseEntity.ok(ApiResponse.ok(
-                PageResponse.of(purchaseService.searchOrders(
-                        wid, keyword, poStatus, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))))));
+        return ResponseEntity.ok(ApiResponse.ok(PageResponse.of(
+                purchaseService.searchOrders(wid, keyword, poStatus,
+                        PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))))));
     }
 
     @GetMapping("/supplier/{supplierId}")
@@ -87,8 +120,9 @@ public class PurchaseController {
             @PathVariable UUID supplierId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(ApiResponse.ok(
-                PageResponse.of(purchaseService.getBySupplier(supplierId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))))));
+        return ResponseEntity.ok(ApiResponse.ok(PageResponse.of(
+                purchaseService.getBySupplier(supplierId,
+                        PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))))));
     }
 
     @GetMapping("/{id}")

@@ -40,6 +40,7 @@ public class UpdateProductRequest {
     private BigDecimal weight;
 
     private Boolean isActive;
+    private Boolean isPublished;
 
     private BigDecimal coverPrice;
     private String slug;

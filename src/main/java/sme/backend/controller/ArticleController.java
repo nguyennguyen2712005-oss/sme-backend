@@ -3,6 +3,7 @@ package sme.backend.controller;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -32,7 +33,8 @@ public class ArticleController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.ok(
-                PageResponse.of(articleService.searchArticles(keyword, type, isActive, PageRequest.of(page, size)))));
+                PageResponse.of(articleService.searchArticles(keyword, type, isActive,
+                        PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))))));
     }
 
     // Lấy chi tiết bài viết qua Slug (Dùng cho trang chi tiết Bài viết bên Khách hàng)

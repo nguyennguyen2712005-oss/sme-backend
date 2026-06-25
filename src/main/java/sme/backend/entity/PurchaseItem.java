@@ -1,6 +1,6 @@
 package sme.backend.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnore; // 1. Bổ sung import này
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -14,7 +14,7 @@ import java.util.UUID;
 @Builder
 public class PurchaseItem extends BaseSimpleEntity {
 
-    @JsonIgnore // 2. BỔ SUNG DÒNG NÀY
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "purchase_id", nullable = false)
     private PurchaseOrder purchaseOrder;
@@ -31,4 +31,8 @@ public class PurchaseItem extends BaseSimpleEntity {
 
     @Column(name = "import_price", nullable = false, precision = 19, scale = 4)
     private BigDecimal importPrice;
+
+    /** Ghi chú khi nhận từng mặt hàng (VD: hàng lỗi, đóng gói khác...) */
+    @Column(name = "receive_note", columnDefinition = "TEXT")
+    private String receiveNote;
 }
