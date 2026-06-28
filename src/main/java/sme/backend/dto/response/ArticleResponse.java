@@ -17,6 +17,9 @@ public class ArticleResponse {
     private String authorName;
     private String type;
     private Boolean isActive;
+    private String status;
+    private String rejectionReason;
+    private java.util.UUID createdByUserId;
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;

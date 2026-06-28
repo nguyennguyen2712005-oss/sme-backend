@@ -28,7 +28,7 @@ public class HomeBannerController {
     }
 
     @GetMapping("/all")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<List<HomeBanner>>> getAllBanners(
             @RequestParam(required = false) String bannerType) {
         return ResponseEntity.ok(ApiResponse.ok(homeBannerService.getAllBanners(bannerType)));

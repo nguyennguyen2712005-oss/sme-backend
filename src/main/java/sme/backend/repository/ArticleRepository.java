@@ -22,13 +22,15 @@ public interface ArticleRepository extends JpaRepository<Article, UUID> {
         SELECT a FROM Article a
         WHERE (:type IS NULL OR a.type = :type)
         AND (:isActive IS NULL OR a.isActive = :isActive)
+        AND (:status IS NULL OR a.status = :status)
         AND (:keyword IS NULL OR :keyword = ''
           OR LOWER(a.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
           OR LOWER(a.content) LIKE LOWER(CONCAT('%', :keyword, '%')))
         ORDER BY a.createdAt DESC
         """)
-    Page<Article> searchArticles(@Param("keyword") String keyword, 
-                                 @Param("type") String type, 
-                                 @Param("isActive") Boolean isActive, 
+    Page<Article> searchArticles(@Param("keyword") String keyword,
+                                 @Param("type") String type,
+                                 @Param("isActive") Boolean isActive,
+                                 @Param("status") Article.ArticleStatus status,
                                  Pageable pageable);
 }

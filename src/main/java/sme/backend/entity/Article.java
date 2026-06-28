@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.envers.Audited;
 import org.hibernate.envers.AuditTable;
+import java.util.UUID;
 
 @Entity
 @Table(name = "articles")
@@ -38,5 +39,20 @@ public class Article extends BaseEntity {
     @Column(name = "is_active")
     @Builder.Default
     private Boolean isActive = true;
+
+    public enum ArticleStatus {
+        DRAFT, PENDING_APPROVAL, PUBLISHED, REJECTED
+    }
+
+    @Column(length = 30, nullable = false)
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    private ArticleStatus status = ArticleStatus.DRAFT;
+
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
+    private String rejectionReason;
+
+    @Column(name = "created_by_user_id")
+    private UUID createdByUserId;
 
 }

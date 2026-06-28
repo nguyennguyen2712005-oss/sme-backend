@@ -122,13 +122,13 @@ public class ProductController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> create(@Valid @RequestBody CreateProductRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.created(productService.createProduct(req)));
     }
 
     @PostMapping("/bulk")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<sme.backend.dto.response.BulkImportResponse>> bulkCreate(
             @RequestBody List<CreateProductRequest> reqs,
             @RequestParam(defaultValue = "0") int startIndex) {
@@ -139,13 +139,13 @@ public class ProductController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> update(@PathVariable UUID id, @RequestBody UpdateProductRequest req) {
         return ResponseEntity.ok(ApiResponse.ok(productService.updateProduct(id, req)));
     }
 
     @PostMapping("/{id}/images")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> addImage(
             @PathVariable UUID id,
             @RequestBody Map<String, String> body) {
@@ -157,7 +157,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}/images/{imageId}")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> deleteImage(
             @PathVariable UUID id,
             @PathVariable UUID imageId) {
@@ -165,7 +165,7 @@ public class ProductController {
     }
 
     @PutMapping("/{id}/images/reorder")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> reorderImages(
             @PathVariable UUID id,
             @RequestBody List<UUID> orderedImageIds) {

@@ -66,15 +66,20 @@ public interface SupplierDebtRepository extends JpaRepository<SupplierDebt, UUID
 
     @Query("""
         SELECT new sme.backend.dto.response.SupplierDebtSummaryResponse(
-            COALESCE(SUM(sd.totalDebt), CAST(0 AS java.math.BigDecimal)),
+            COALESCE(SUM(CASE WHEN sd.status != 'PAID' THEN sd.totalDebt
+                         ELSE CAST(0 AS java.math.BigDecimal) END),
+                     CAST(0 AS java.math.BigDecimal)),
             COALESCE(SUM(sd.paidAmount), CAST(0 AS java.math.BigDecimal)),
-            COALESCE(SUM(sd.totalDebt - sd.paidAmount), CAST(0 AS java.math.BigDecimal)),
-            COUNT(DISTINCT CASE WHEN (sd.totalDebt - sd.paidAmount) > 0 THEN sd.supplierId ELSE NULL END)
+            COALESCE(SUM(CASE WHEN sd.status != 'PAID' THEN (sd.totalDebt - sd.paidAmount)
+                         ELSE CAST(0 AS java.math.BigDecimal) END),
+                     CAST(0 AS java.math.BigDecimal)),
+            COUNT(DISTINCT CASE WHEN sd.status != 'PAID'
+                                AND (sd.totalDebt - sd.paidAmount) > 0
+                           THEN sd.supplierId ELSE NULL END)
         )
         FROM SupplierDebt sd
         LEFT JOIN Supplier s ON s.id = sd.supplierId
-        WHERE sd.status != 'PAID'
-        AND (:warehouseId IS NULL OR sd.purchaseOrderId IN
+        WHERE (:warehouseId IS NULL OR sd.purchaseOrderId IN
             (SELECT po.id FROM PurchaseOrder po WHERE po.warehouseId = :warehouseId))
         AND (:search IS NULL OR :search = ''
             OR LOWER(s.name) LIKE LOWER(CONCAT('%', :search, '%'))

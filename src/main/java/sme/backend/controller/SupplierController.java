@@ -50,7 +50,7 @@ public class SupplierController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Supplier>> create(@RequestBody Map<String, Object> body) {
         String taxCode = (String) body.get("taxCode");
 
@@ -79,7 +79,7 @@ public class SupplierController {
 
     // ĐÃ THÊM MỚI BƯỚC 2: API IMPORT EXCEL HÀNG LOẠT
     @PostMapping("/bulk")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, String>>> importBulk(@RequestBody List<Map<String, Object>> payloadList) {
         List<Supplier> suppliersToSave = new ArrayList<>();
         int successCount = 0;
@@ -116,7 +116,7 @@ public class SupplierController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Supplier>> update(
             @PathVariable UUID id, @RequestBody Map<String, Object> body) {
         Supplier s = supplierRepository.findById(id)

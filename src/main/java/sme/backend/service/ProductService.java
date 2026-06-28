@@ -77,10 +77,6 @@ public class ProductService {
             primaryImage = req.getImageUrl();
         }
 
-        boolean isAdmin = org.springframework.security.core.context.SecurityContextHolder.getContext()
-                .getAuthentication().getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-
         Product product = Product.builder()
                 .categoryId(req.getCategoryId()).supplierId(req.getSupplierId())
                 .isbnBarcode(req.getIsbnBarcode()).sku(req.getSku()).name(req.getName())
@@ -93,7 +89,7 @@ public class ProductService {
                 .language(req.getLanguage() != null ? req.getLanguage() : "Tiếng Việt")
                 .authorId(req.getAuthorId())
                 .author(req.getAuthor())
-                .isPublished(isAdmin && Boolean.TRUE.equals(req.getIsPublished()))
+                .isPublished(Boolean.TRUE.equals(req.getIsPublished()))
                 .isActive(true).build();
 
         Product saved = productRepository.save(product);

@@ -113,6 +113,10 @@ public class POSService {
                         }
                 }
 
+                String cashierName = userRepository.findById(cashierId)
+                        .map(u -> u.getFullName() != null ? u.getFullName() : u.getUsername())
+                        .orElse("POS");
+
                 for (CheckoutRequest.CartItemRequest cartItem : req.getItems()) {
                         Product product = productRepository.findById(cartItem.getProductId()).orElseThrow();
                         Inventory inv = inventoryRepository
@@ -132,7 +136,7 @@ public class POSService {
                                                         .quantityChange(-cartItem.getQuantity())
                                                         .quantityBefore(before)
                                                         .quantityAfter(inv.getQuantity())
-                                                        .createdBy(cashierId.toString())
+                                                        .createdBy(cashierName)
                                                         .build());
 
                         InvoiceItem item = InvoiceItem.builder()

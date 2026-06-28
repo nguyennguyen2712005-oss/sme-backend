@@ -169,7 +169,7 @@ public class PurchaseService {
             throw new BusinessException("FORBIDDEN", "Bạn không có quyền nhận hàng cho kho này.");
         }
 
-        String operator = receivedBy.toString();
+        String operator = receiver.getFullName() != null ? receiver.getFullName() : receiver.getUsername();
 
         try {
             for (PurchaseItem item : po.getItems()) {

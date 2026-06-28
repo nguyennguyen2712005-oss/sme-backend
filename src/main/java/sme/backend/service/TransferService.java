@@ -226,11 +226,13 @@ public class TransferService {
             throw new BusinessException("FORBIDDEN", "Bạn không có quyền xuất kho này");
         }
 
+        String dispatcherName = user.getFullName() != null ? user.getFullName() : user.getUsername();
+
         for (TransferItem item : transfer.getItems()) {
             if (isAutoTransfer) {
                 inventoryService.releaseReservation(
                         item.getProductId(), transfer.getFromWarehouseId(),
-                        item.getQuantity(), transfer.getReferenceOrderId(), dispatchedBy.toString()
+                        item.getQuantity(), transfer.getReferenceOrderId(), dispatcherName
                 );
             }
 
@@ -248,7 +250,7 @@ public class TransferService {
             inv = inventoryRepository.save(inv);
 
             inventoryService.recordTransaction(inv, transfer.getId(), "TRANSFER_OUT",
-                    -item.getQuantity(), before, inv.getQuantity(), dispatchedBy.toString(),
+                    -item.getQuantity(), before, inv.getQuantity(), dispatcherName,
                     "Xuất luân chuyển kho");
         }
 
@@ -281,8 +283,13 @@ public class TransferService {
             throw new BusinessException("FORBIDDEN", "Bạn không có quyền nhận hàng cho kho này");
         }
 
+        String receiverName = user.getFullName() != null ? user.getFullName() : user.getUsername();
         boolean isAutoTransfer = transfer.getReferenceOrderId() != null;
         boolean hasDiscrepancy = false;
+
+        // Capture before the loop — transfer is reassigned after the loop, so these must be final
+        final String tCode = transfer.getCode();
+        final UUID tId = transfer.getId();
 
         for (TransferItem item : transfer.getItems()) {
             ReceiveItemRequest req = receivedItems.stream()
@@ -316,16 +323,33 @@ public class TransferService {
                 destInv.addQuantity(actualReceivedQty);
                 destInv = inventoryRepository.save(destInv);
                 inventoryService.recordTransaction(destInv, transfer.getId(), "TRANSFER_IN",
-                        actualReceivedQty, before, destInv.getQuantity(), receivedBy.toString(),
+                        actualReceivedQty, before, destInv.getQuantity(), receiverName,
                         "Nhận hàng luân chuyển (Thực nhận: " + actualReceivedQty + "/" + item.getQuantity() + ")");
             }
 
-            // Xóa hàng đang đi đường tại kho nguồn
-            inventoryRepository.findByProductIdAndWarehouseId(
+            // Xóa hàng đang đi đường tại kho nguồn; hoàn lại phần chênh lệch nếu nhận thiếu
+            final int discrepancyToReturn = discrepancy;
+            final String discrepancyRsnFinal = item.getDiscrepancyReason();
+            inventoryRepository.findByProductAndWarehouseWithLock(
                     item.getProductId(), transfer.getFromWarehouseId())
                     .ifPresent(srcInv -> {
+                        // Luôn xóa toàn bộ in-transit cho item này
                         srcInv.setInTransit(Math.max(0, srcInv.getInTransit() - item.getQuantity()));
-                        inventoryRepository.save(srcInv);
+
+                        if (discrepancyToReturn > 0) {
+                            // Hoàn lại số lượng thiếu về tồn kho kho xuất
+                            int before = srcInv.getQuantity() != null ? srcInv.getQuantity() : 0;
+                            srcInv.addQuantity(discrepancyToReturn);
+                            inventoryRepository.save(srcInv);
+                            inventoryService.recordTransaction(srcInv, tId, "TRANSFER_RETURN",
+                                    discrepancyToReturn, before, srcInv.getQuantity(),
+                                    receiverName,
+                                    "Hoàn " + discrepancyToReturn + " đơn vị thiếu về kho xuất — phiếu "
+                                            + tCode
+                                            + (discrepancyRsnFinal != null ? ": " + discrepancyRsnFinal : ""));
+                        } else {
+                            inventoryRepository.save(srcInv);
+                        }
                     });
 
             item.setReceivedQty(actualReceivedQty);
@@ -346,7 +370,11 @@ public class TransferService {
         transfer = transferRepository.save(transfer);
 
         log.info("Transfer {}: {} by {}", transfer.getCode(), transfer.getStatus(), receivedBy);
-        notificationService.notifyTransferArrived(transfer.getId(), transfer.getFromWarehouseId());
+        if (hasDiscrepancy) {
+            notificationService.notifyTransferReceivedPartial(transfer);
+        } else {
+            notificationService.notifyTransferReceivedFull(transfer);
+        }
 
         if (isAutoTransfer) {
             UUID orderId = transfer.getReferenceOrderId();

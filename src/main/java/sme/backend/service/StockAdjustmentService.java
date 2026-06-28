@@ -112,6 +112,8 @@ public class StockAdjustmentService {
             throw new BusinessException("FORBIDDEN", "Chỉ Admin mới có quyền duyệt phiếu kiểm kê.");
         }
 
+        String approverName = approver.getFullName() != null ? approver.getFullName() : approver.getUsername();
+
         for (StockAdjustmentItem item : adj.getItems()) {
             if (item.getDiffQty() != 0) {
                 AdjustInventoryRequest req = new AdjustInventoryRequest();
@@ -120,7 +122,7 @@ public class StockAdjustmentService {
                 req.setActualQuantity(item.getActualQty());
                 req.setReason("Kiểm kê " + adj.getCode()
                         + (item.getReason() != null ? ": " + item.getReason() : ""));
-                inventoryService.adjustInventory(req, adj.getId(), approvedBy.toString());
+                inventoryService.adjustInventory(req, adj.getId(), approverName);
             }
         }
 

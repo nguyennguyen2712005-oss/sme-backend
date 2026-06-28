@@ -34,6 +34,7 @@ public class InventoryService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final InternalTransferRepository transferRepository;
     private final InvoiceRepository invoiceRepository;
+    private final UserRepository userRepository;
     
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -376,12 +377,13 @@ public class InventoryService {
         return txns.map(txn -> {
             InventoryTransactionResponse dto = new InventoryTransactionResponse();
             dto.setId(txn.getId());
-            dto.setType(txn.getTransactionType());
+            dto.setTransactionType(txn.getTransactionType());
             dto.setQuantityChange(txn.getQuantityChange());
-            dto.setBalance(txn.getQuantityAfter());
+            dto.setQuantityBefore(txn.getQuantityBefore());
+            dto.setQuantityAfter(txn.getQuantityAfter());
             dto.setNote(txn.getNote());
             dto.setCreatedAt(txn.getCreatedAt());
-            dto.setCreatedBy(txn.getCreatedBy());
+            dto.setCreatedBy(resolveCreatedBy(txn.getCreatedBy()));
 
             if (txn.getReferenceId() != null) {
                 try {
@@ -516,5 +518,19 @@ public class InventoryService {
                 .errorCount(errorCount)
                 .errors(errors)
                 .build();
+    }
+
+    // Nếu createdBy là UUID (dữ liệu cũ) → resolve về tên người dùng
+    private String resolveCreatedBy(String createdBy) {
+        if (createdBy == null || createdBy.isBlank()) return createdBy;
+        try {
+            UUID userId = UUID.fromString(createdBy);
+            return userRepository.findById(userId)
+                    .map(u -> u.getFullName() != null && !u.getFullName().isBlank()
+                            ? u.getFullName() : u.getUsername())
+                    .orElse(createdBy);
+        } catch (IllegalArgumentException e) {
+            return createdBy; // Đã là tên hoặc "SYSTEM" → giữ nguyên
+        }
     }
 }

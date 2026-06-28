@@ -451,6 +451,72 @@ public class NotificationService {
     }
 
     @Async
+    public void notifyTransferReceivedPartial(sme.backend.entity.InternalTransfer transfer) {
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "TRANSFER_RECEIVED_PARTIAL");
+        payload.put("transferId", transfer.getId().toString());
+        payload.put("transferCode", transfer.getCode());
+
+        // Tổng hợp chi tiết chênh lệch
+        int totalShortItems = 0;
+        int totalShortQty = 0;
+        StringBuilder detail = new StringBuilder();
+        for (sme.backend.entity.TransferItem item : transfer.getItems()) {
+            if (item.getDiscrepancyQty() != null && item.getDiscrepancyQty() > 0) {
+                totalShortItems++;
+                totalShortQty += item.getDiscrepancyQty();
+                detail.append(String.format("• Sản phẩm (%s): thiếu %d — %s. ",
+                        item.getProductId().toString().substring(0, 8),
+                        item.getDiscrepancyQty(),
+                        item.getDiscrepancyReason() != null ? item.getDiscrepancyReason() : "không rõ lý do"));
+            }
+        }
+
+        payload.put("totalShortItems", totalShortItems);
+        payload.put("totalShortQty", totalShortQty);
+
+        String title = "⚠️ Phiếu chuyển kho nhận thiếu hàng";
+        String message = String.format(
+                "Kho nhập đã nhận phiếu %s nhưng thiếu %d sản phẩm (tổng %d đơn vị). %s" +
+                "Vui lòng kiểm tra và tạo phiếu bổ sung nếu cần.",
+                transfer.getCode(), totalShortItems, totalShortQty, detail.toString());
+
+        // Thông báo cho managers kho xuất (cần nhận thông tin thiếu hàng)
+        notifyManagersOfWarehouse(transfer.getFromWarehouseId(),
+                "TRANSFER_RECEIVED_PARTIAL", title, message, payload);
+
+        // Thông báo cho Admin
+        notifyAdminsOnly("TRANSFER_RECEIVED_PARTIAL", title, message, payload);
+
+        // WebSocket real-time
+        messagingTemplate.convertAndSend(
+                "/topic/warehouse/" + transfer.getFromWarehouseId() + "/transfer", payload);
+        messagingTemplate.convertAndSend("/topic/admin/transfer", payload);
+
+        log.debug("Transfer partial receipt notification sent: transfer={}, shortItems={}, shortQty={}",
+                transfer.getCode(), totalShortItems, totalShortQty);
+    }
+
+    @Async
+    public void notifyTransferReceivedFull(sme.backend.entity.InternalTransfer transfer) {
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "TRANSFER_RECEIVED_FULL");
+        payload.put("transferId", transfer.getId().toString());
+        payload.put("transferCode", transfer.getCode());
+
+        String title = "✅ Phiếu chuyển kho đã nhận đủ";
+        String message = String.format("Kho nhập đã xác nhận nhận đủ hàng phiếu %s.", transfer.getCode());
+
+        notifyManagersOfWarehouse(transfer.getFromWarehouseId(),
+                "TRANSFER_RECEIVED_FULL", title, message, payload);
+        notifyAdminsOnly("TRANSFER_RECEIVED_FULL", title, message, payload);
+
+        messagingTemplate.convertAndSend(
+                "/topic/warehouse/" + transfer.getFromWarehouseId() + "/transfer", payload);
+        messagingTemplate.convertAndSend("/topic/admin/transfer", payload);
+    }
+
+    @Async
     public void notifyAdjustmentPendingApproval(sme.backend.entity.StockAdjustment adj) {
         Map<String, Object> payload = Map.of(
                 "type", "ADJUSTMENT_PENDING_APPROVAL",
@@ -459,6 +525,10 @@ public class NotificationService {
                 "warehouseId", adj.getWarehouseId());
         notifyAdminsOnly("ADJUSTMENT_PENDING_APPROVAL", "📊 Phiếu kiểm kê chờ duyệt",
                 String.format("Phiếu kiểm kê %s đang chờ duyệt.", adj.getCode()), payload);
+    }
+
+    public void saveNotification(sme.backend.entity.Notification notif) {
+        notificationRepository.save(notif);
     }
 
     public void markAsRead(UUID notificationId) {
