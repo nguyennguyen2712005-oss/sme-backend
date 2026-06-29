@@ -1,3 +1,4 @@
+
 package sme.backend.ai;
 
 import jakarta.persistence.EntityManager;
@@ -195,6 +196,11 @@ public class AiService {
 
                 Tên người dùng: %s
 
+                CÔNG CỤ DỮ LIỆU THỜI GIAN THỰC — luôn gọi công cụ phù hợp khi câu hỏi khớp, không tự suy đoán số liệu:
+                - Hỏi doanh thu/lợi nhuận hôm nay → gọi getTodayRevenueFunction
+                - Hỏi sản phẩm sắp hết hàng/tồn kho thấp → gọi getLowStockProductsFunction
+                - Hỏi khách hàng thân thiết/chi tiêu nhiều nhất → gọi getTopCustomersFunction
+
                 THÔNG TIN NGỮ CẢNH TỪ TÀI LIỆU (RAG):
                 %s
 
@@ -202,9 +208,9 @@ public class AiService {
                 %s
 
                 Lưu ý quan trọng:
-                - Ưu tiên sử dụng "THÔNG TIN NGỮ CẢNH" để trả lời nếu câu hỏi liên quan đến tài liệu.
-                - Nếu không tìm thấy thông tin trong ngữ cảnh, hãy nói rõ và tuyệt đối không bịa đặt (hallucinate).
-                - Với câu hỏi về số liệu thực tế (doanh thu, tồn kho), hãy hướng dẫn người dùng xem báo cáo.
+                - Với câu hỏi về số liệu kinh doanh thực tế (doanh thu, tồn kho, khách hàng), luôn gọi công cụ dữ liệu tương ứng ở trên để lấy số liệu thật.
+                - Ưu tiên sử dụng "THÔNG TIN NGỮ CẢNH" để trả lời nếu câu hỏi liên quan đến chính sách, quy trình nội bộ từ tài liệu.
+                - Nếu không tìm thấy thông tin (từ công cụ hoặc tài liệu), hãy nói rõ và tuyệt đối không bịa đặt (hallucinate).
                 - Luôn trả lời ngắn gọn, có cấu trúc rõ ràng.
                 """.formatted(
                 userName,
