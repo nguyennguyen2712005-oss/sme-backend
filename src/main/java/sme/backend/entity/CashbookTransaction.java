@@ -61,16 +61,31 @@ public class CashbookTransaction extends BaseSimpleEntity {
     @Column(name = "created_by", length = 100)
     private String createdBy;
 
+    @Column(name = "person_name", length = 100)
+    private String personName;
+
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "approval_status", length = 20, nullable = false)
+    @Builder.Default
+    private ApprovalStatus approvalStatus = ApprovalStatus.APPROVED;
+
+    @Column(name = "reject_reason", columnDefinition = "TEXT")
+    private String rejectReason;
+
     public enum FundType {
-        CASH_111,  // Quỹ Tiền mặt tại két
-        BANK_112   // Quỹ Tiền gửi Ngân hàng
+        CASH_111,
+        BANK_112
     }
 
     public enum TransactionType {
-        IN,   // Thu tiền
-        OUT   // Chi tiền
+        IN,
+        OUT
+    }
+
+    public enum ApprovalStatus {
+        PENDING, APPROVED, REJECTED
     }
 }

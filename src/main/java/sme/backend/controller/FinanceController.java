@@ -58,13 +58,55 @@ public class FinanceController {
     public ResponseEntity<ApiResponse<CashbookTransaction>> createEntry(
             @Valid @RequestBody CreateCashbookEntryRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
-            
+
         if (principal.getRole() != User.UserRole.ROLE_ADMIN || req.getWarehouseId() == null) {
             req.setWarehouseId(principal.getWarehouseId());
         }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.created(
                 financeService.createManualEntry(req, principal.getUsername())));
+    }
+
+    @PostMapping("/cashbook/pending")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<CashbookTransaction>> createPendingEntry(
+            @Valid @RequestBody CreateCashbookEntryRequest req,
+            @AuthenticationPrincipal UserPrincipal principal) {
+
+        req.setWarehouseId(principal.getWarehouseId());
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.created(
+                financeService.createPendingEntry(req, principal.getUsername())));
+    }
+
+    @GetMapping("/cashbook/pending")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<List<CashbookTransaction>>> getPendingEntries(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) UUID warehouseId) {
+
+        UUID wid = getEffectiveWarehouseId(principal, warehouseId);
+        return ResponseEntity.ok(ApiResponse.ok(financeService.getPendingEntries(wid)));
+    }
+
+    @PutMapping("/cashbook/{id}/approve")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<CashbookTransaction>> approveEntry(
+            @PathVariable UUID id) {
+
+        return ResponseEntity.ok(ApiResponse.ok("Phiếu đã được duyệt",
+                financeService.approveEntry(id)));
+    }
+
+    @PutMapping("/cashbook/{id}/reject")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<CashbookTransaction>> rejectEntry(
+            @PathVariable UUID id,
+            @RequestBody(required = false) Map<String, String> body) {
+
+        String reason = (body != null) ? body.getOrDefault("reason", "") : "";
+        return ResponseEntity.ok(ApiResponse.ok("Phiếu đã bị từ chối",
+                financeService.rejectEntry(id, reason)));
     }
 
     @GetMapping("/cashbook/balance")
@@ -197,6 +239,7 @@ public class FinanceController {
             @AuthenticationPrincipal UserPrincipal principal,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
@@ -204,7 +247,15 @@ public class FinanceController {
         Pageable pageable = PageRequest.of(page, size);
 
         return ResponseEntity.ok(ApiResponse.ok(
-                financeService.searchDebtsPaged(wid, search, pageable)));
+                financeService.searchDebtsPaged(wid, search, status, pageable)));
+    }
+
+    @GetMapping("/supplier-debts/{id}/payments")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<List<CashbookTransaction>>> getDebtPaymentHistory(
+            @PathVariable UUID id) {
+
+        return ResponseEntity.ok(ApiResponse.ok(financeService.getDebtPaymentHistory(id)));
     }
 
     // =========================================================================

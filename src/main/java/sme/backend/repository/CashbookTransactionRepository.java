@@ -21,6 +21,15 @@ public interface CashbookTransactionRepository extends JpaRepository<CashbookTra
 
     List<CashbookTransaction> findByShiftIdOrderByCreatedAtAsc(UUID shiftId);
 
+    List<CashbookTransaction> findByReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+            String referenceType, UUID referenceId);
+
+    List<CashbookTransaction> findByApprovalStatusOrderByCreatedAtDesc(
+            CashbookTransaction.ApprovalStatus approvalStatus);
+
+    List<CashbookTransaction> findByWarehouseIdAndApprovalStatusOrderByCreatedAtDesc(
+            UUID warehouseId, CashbookTransaction.ApprovalStatus approvalStatus);
+
     Page<CashbookTransaction> findByWarehouseIdAndFundTypeOrderByCreatedAtDesc(
             UUID warehouseId,
             CashbookTransaction.FundType fundType,

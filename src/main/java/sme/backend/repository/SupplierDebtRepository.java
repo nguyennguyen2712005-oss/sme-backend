@@ -59,6 +59,38 @@ public interface SupplierDebtRepository extends JpaRepository<SupplierDebt, UUID
             @Param("search") String search,
             Pageable pageable);
 
+    @Query("""
+        SELECT sd FROM SupplierDebt sd
+        LEFT JOIN Supplier s ON s.id = sd.supplierId
+        WHERE (:warehouseId IS NULL OR sd.purchaseOrderId IN
+            (SELECT po.id FROM PurchaseOrder po WHERE po.warehouseId = :warehouseId))
+        AND (:search IS NULL OR :search = ''
+            OR LOWER(s.name) LIKE LOWER(CONCAT('%', :search, '%'))
+            OR LOWER(CAST(sd.purchaseOrderId AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
+        ORDER BY sd.createdAt DESC
+        """)
+    Page<SupplierDebt> searchAllDebts(
+            @Param("warehouseId") UUID warehouseId,
+            @Param("search") String search,
+            Pageable pageable);
+
+    @Query("""
+        SELECT sd FROM SupplierDebt sd
+        LEFT JOIN Supplier s ON s.id = sd.supplierId
+        WHERE sd.status = :status
+        AND (:warehouseId IS NULL OR sd.purchaseOrderId IN
+            (SELECT po.id FROM PurchaseOrder po WHERE po.warehouseId = :warehouseId))
+        AND (:search IS NULL OR :search = ''
+            OR LOWER(s.name) LIKE LOWER(CONCAT('%', :search, '%'))
+            OR LOWER(CAST(sd.purchaseOrderId AS string)) LIKE LOWER(CONCAT('%', :search, '%')))
+        ORDER BY sd.createdAt DESC
+        """)
+    Page<SupplierDebt> searchDebtsByStatus(
+            @Param("warehouseId") UUID warehouseId,
+            @Param("search") String search,
+            @Param("status") SupplierDebt.DebtStatus status,
+            Pageable pageable);
+
     // =========================================================================
     // SUMMARY QUERY — tính tổng hợp tại DB level, thay thế JS .reduce() sai ở frontend
     // Filters khớp hoàn toàn với search query phía trên

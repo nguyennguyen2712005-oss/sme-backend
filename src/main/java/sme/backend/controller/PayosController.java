@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import sme.backend.dto.request.PaymentRequest;
 import sme.backend.dto.response.ApiResponse;
@@ -115,8 +116,8 @@ public class PayosController {
             if (draft != null) {
                 try {
                     CheckoutRequest req = draft.getCheckoutRequest();
-                    if (req.getPayments() == null) req.setPayments(new ArrayList<>());
-                    
+                    req.setPayments(new ArrayList<>());
+
                     CheckoutRequest.PaymentRequest payment = new CheckoutRequest.PaymentRequest();
                     payment.setMethod("BANK_TRANSFER");
                     payment.setAmount(BigDecimal.valueOf(draft.getAmount()));
@@ -138,6 +139,40 @@ public class PayosController {
         }
 
         return ResponseEntity.ok("OK");
+    }
+
+    /**
+     * Cashier xác nhận thủ công rằng khách đã thanh toán qua PayOS.
+     * Dùng khi webhook không tới được (local dev) hoặc polling không hoạt động.
+     */
+    @PostMapping("/pos-confirm/{orderCode}")
+    @PreAuthorize("hasAnyRole('CASHIER','MANAGER')")
+    public ResponseEntity<ApiResponse<InvoiceResponse>> posManualConfirm(
+            @PathVariable String orderCode) {
+        String baseCode = orderCode.length() > 13 ? orderCode.substring(0, 13) : orderCode;
+
+        PosCheckoutDraft draft = (PosCheckoutDraft) redisTemplate.opsForValue().get("pos_checkout:" + baseCode);
+        if (draft == null) {
+            throw new sme.backend.exception.BusinessException("DRAFT_NOT_FOUND",
+                    "Đơn hàng không tồn tại hoặc đã được xử lý trước đó");
+        }
+
+        CheckoutRequest req = draft.getCheckoutRequest();
+        req.setPayments(new ArrayList<>());
+
+        CheckoutRequest.PaymentRequest payment = new CheckoutRequest.PaymentRequest();
+        payment.setMethod("BANK_TRANSFER");
+        payment.setAmount(BigDecimal.valueOf(draft.getAmount()));
+        payment.setReference("PayOS - Xác nhận thủ công");
+        req.getPayments().add(payment);
+
+        InvoiceResponse invoice = posService.checkout(req, draft.getCashierId(), draft.getWarehouseId());
+        messagingTemplate.convertAndSend(
+                "/topic/pos-payment/" + baseCode,
+                ApiResponse.ok("Thanh toán xác nhận thành công", invoice));
+        redisTemplate.delete("pos_checkout:" + baseCode);
+
+        return ResponseEntity.ok(ApiResponse.ok("Thanh toán xác nhận thành công", invoice));
     }
 
     @GetMapping("/verify/{orderCode}")
@@ -170,7 +205,7 @@ public class PayosController {
                         PosCheckoutDraft draft = (PosCheckoutDraft) redisTemplate.opsForValue().get("pos_checkout:" + baseOrderCodeNum);
                         if (draft != null) {
                             CheckoutRequest req = draft.getCheckoutRequest();
-                            if (req.getPayments() == null) req.setPayments(new ArrayList<>());
+                            req.setPayments(new ArrayList<>());
                             CheckoutRequest.PaymentRequest payment = new CheckoutRequest.PaymentRequest();
                             payment.setMethod("BANK_TRANSFER");
                             payment.setAmount(BigDecimal.valueOf(draft.getAmount()));

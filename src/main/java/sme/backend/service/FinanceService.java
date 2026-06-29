@@ -64,10 +64,98 @@ public class FinanceService {
                 .balanceBefore(balanceBefore)
                 .balanceAfter(balanceAfter)
                 .description(req.getDescription())
+                .personName(req.getPersonName())
                 .createdBy(createdBy)
+                .approvalStatus(CashbookTransaction.ApprovalStatus.APPROVED)
                 .build();
 
         return cashbookRepository.save(txn);
+    }
+
+    @Transactional
+    public CashbookTransaction createPendingEntry(CreateCashbookEntryRequest req, String createdBy) {
+        CashbookTransaction.FundType fundType;
+        CashbookTransaction.TransactionType txnType;
+        try {
+            fundType = CashbookTransaction.FundType.valueOf(req.getFundType().toUpperCase());
+            txnType  = CashbookTransaction.TransactionType.valueOf(req.getTransactionType().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException("INVALID_ENUM", "fundType hoặc transactionType không hợp lệ");
+        }
+
+        CashbookTransaction txn = CashbookTransaction.builder()
+                .warehouseId(req.getWarehouseId())
+                .fundType(fundType)
+                .transactionType(txnType)
+                .referenceType(req.getReferenceType())
+                .amount(req.getAmount())
+                .description(req.getDescription())
+                .personName(req.getPersonName())
+                .createdBy(createdBy)
+                .approvalStatus(CashbookTransaction.ApprovalStatus.PENDING)
+                .build();
+
+        return cashbookRepository.save(txn);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CashbookTransaction> getPendingEntries(UUID warehouseId) {
+        if (warehouseId == null) {
+            return cashbookRepository.findByApprovalStatusOrderByCreatedAtDesc(
+                    CashbookTransaction.ApprovalStatus.PENDING);
+        }
+        return cashbookRepository.findByWarehouseIdAndApprovalStatusOrderByCreatedAtDesc(
+                warehouseId, CashbookTransaction.ApprovalStatus.PENDING);
+    }
+
+    @Transactional
+    public CashbookTransaction approveEntry(UUID id) {
+        CashbookTransaction txn = cashbookRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("CashbookTransaction", id));
+
+        if (txn.getApprovalStatus() != CashbookTransaction.ApprovalStatus.PENDING) {
+            throw new BusinessException("NOT_PENDING", "Phiếu này không ở trạng thái chờ duyệt");
+        }
+
+        BigDecimal balanceBefore = cashbookRepository.getCurrentBalanceByWarehouse(
+                txn.getWarehouseId(), txn.getFundType());
+        if (balanceBefore == null) balanceBefore = BigDecimal.ZERO;
+
+        BigDecimal balanceAfter = txn.getTransactionType() == CashbookTransaction.TransactionType.IN
+                ? balanceBefore.add(txn.getAmount())
+                : balanceBefore.subtract(txn.getAmount());
+
+        if (balanceAfter.compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessException("INSUFFICIENT_FUNDS",
+                    "Số dư quỹ không đủ để duyệt. Hiện có: " + balanceBefore);
+        }
+
+        txn.setBalanceBefore(balanceBefore);
+        txn.setBalanceAfter(balanceAfter);
+        txn.setApprovalStatus(CashbookTransaction.ApprovalStatus.APPROVED);
+        return cashbookRepository.save(txn);
+    }
+
+    @Transactional
+    public CashbookTransaction rejectEntry(UUID id, String reason) {
+        CashbookTransaction txn = cashbookRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("CashbookTransaction", id));
+
+        if (txn.getApprovalStatus() != CashbookTransaction.ApprovalStatus.PENDING) {
+            throw new BusinessException("NOT_PENDING", "Phiếu này không ở trạng thái chờ duyệt");
+        }
+
+        txn.setApprovalStatus(CashbookTransaction.ApprovalStatus.REJECTED);
+        txn.setRejectReason(reason);
+        return cashbookRepository.save(txn);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CashbookTransaction> getDebtPaymentHistory(UUID debtId) {
+        SupplierDebt debt = supplierDebtRepository.findById(debtId)
+                .orElseThrow(() -> new ResourceNotFoundException("SupplierDebt", debtId));
+        return cashbookRepository.findByReferenceTypeAndReferenceIdOrderByCreatedAtDesc(
+                "SUPPLIER_PAYMENT", debt.getPurchaseOrderId());
     }
 
     @Transactional(readOnly = true)
@@ -284,9 +372,16 @@ public class FinanceService {
     // (Lý do: frontend cũ fetch toàn bộ list rồi .reduce() gây memory issue)
     // =========================================================================
     @Transactional(readOnly = true)
-    public Page<SupplierDebtResponse> searchDebtsPaged(UUID warehouseId, String search, Pageable pageable) {
+    public Page<SupplierDebtResponse> searchDebtsPaged(UUID warehouseId, String search, String statusStr, Pageable pageable) {
         String kw = (search == null) ? "" : search.trim();
-        Page<SupplierDebt> page = supplierDebtRepository.searchOutstandingDebts(warehouseId, kw, pageable);
+        SupplierDebt.DebtStatus status = null;
+        if (statusStr != null && !statusStr.isBlank()) {
+            try { status = SupplierDebt.DebtStatus.valueOf(statusStr.toUpperCase()); }
+            catch (IllegalArgumentException ignored) {}
+        }
+        Page<SupplierDebt> page = (status == null)
+                ? supplierDebtRepository.searchAllDebts(warehouseId, kw, pageable)
+                : supplierDebtRepository.searchDebtsByStatus(warehouseId, kw, status, pageable);
 
         return page.map(debt -> {
             var po = purchaseOrderRepository.findById(debt.getPurchaseOrderId()).orElse(null);

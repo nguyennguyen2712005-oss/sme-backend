@@ -115,8 +115,16 @@ public class GlobalExceptionHandler {
     // ---------------------------------------------------------------
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGeneral(Exception ex, HttpServletRequest request) {
-        log.error("Unhandled exception at {}: {}", request.getRequestURI(), ex.getMessage(), ex);
-        String detailedMessage = "Lỗi hệ thống: " + ex.getClass().getName() + " - " + ex.getMessage();
+        log.error("╔══ UNHANDLED EXCEPTION ══════════════════════════════════════╗");
+        log.error("║ URI  : {}", request.getRequestURI());
+        log.error("║ Type : {}", ex.getClass().getName());
+        log.error("║ Msg  : {}", ex.getMessage());
+        if (ex.getCause() != null) {
+            log.error("║ Cause: {} - {}", ex.getCause().getClass().getName(), ex.getCause().getMessage());
+        }
+        log.error("╚═════════════════════════════════════════════════════════════╝", ex);
+        String detailedMessage = ex.getClass().getSimpleName() + ": " + ex.getMessage()
+                + (ex.getCause() != null ? " → Caused by: " + ex.getCause().getMessage() : "");
         return buildError(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR",
                 detailedMessage, request);
     }

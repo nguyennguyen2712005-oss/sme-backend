@@ -29,4 +29,6 @@ public class CreateCashbookEntryRequest {
 
     @NotBlank(message = "Mô tả không được để trống")
     private String description;
+
+    private String personName;
 }
