@@ -20,6 +20,9 @@ public class InvoiceResponse {
     private String type;
     private BigDecimal totalAmount;
     private BigDecimal discountAmount;
+    private BigDecimal volumeDiscountAmt;
+    private BigDecimal orderDiscountAmt;
+    private BigDecimal couponDiscountAmt;
     private BigDecimal finalAmount;
     private Integer pointsUsed;
     private Integer pointsEarned;

@@ -26,6 +26,7 @@ public class CheckoutRequest {
 
     private Integer pointsToUse;   // null hoặc 0 = không dùng điểm
 
+    private BigDecimal volumeDiscountAmt;
     private BigDecimal orderDiscountAmt;
     private BigDecimal couponDiscountAmt;
     private List<String> couponCodes; // Support multiple coupon codes

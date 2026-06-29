@@ -51,6 +51,18 @@ public class Invoice extends BaseEntity {
     @Builder.Default
     private BigDecimal discountAmount = BigDecimal.ZERO;
 
+    @Column(name = "volume_discount_amt", precision = 19, scale = 4)
+    @Builder.Default
+    private BigDecimal volumeDiscountAmt = BigDecimal.ZERO;
+
+    @Column(name = "order_discount_amt", precision = 19, scale = 4)
+    @Builder.Default
+    private BigDecimal orderDiscountAmt = BigDecimal.ZERO;
+
+    @Column(name = "coupon_discount_amt", precision = 19, scale = 4)
+    @Builder.Default
+    private BigDecimal couponDiscountAmt = BigDecimal.ZERO;
+
     @Column(name = "final_amount", nullable = false, precision = 19, scale = 4)
     @Builder.Default
     private BigDecimal finalAmount = BigDecimal.ZERO;

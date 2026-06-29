@@ -154,14 +154,10 @@ public class POSService {
                 }
 
                 // 5. Discount
-                BigDecimal discountAmount = BigDecimal.ZERO;
-
-                if (req.getOrderDiscountAmt() != null) {
-                        discountAmount = discountAmount.add(req.getOrderDiscountAmt());
-                }
-                if (req.getCouponDiscountAmt() != null) {
-                        discountAmount = discountAmount.add(req.getCouponDiscountAmt());
-                }
+                BigDecimal volumeDiscountAmt = req.getVolumeDiscountAmt() != null ? req.getVolumeDiscountAmt() : BigDecimal.ZERO;
+                BigDecimal orderDiscountAmt = req.getOrderDiscountAmt() != null ? req.getOrderDiscountAmt() : BigDecimal.ZERO;
+                BigDecimal couponDiscountAmt = req.getCouponDiscountAmt() != null ? req.getCouponDiscountAmt() : BigDecimal.ZERO;
+                BigDecimal discountAmount = volumeDiscountAmt.add(orderDiscountAmt).add(couponDiscountAmt);
 
                 int pointsToUse = req.getPointsToUse() != null ? req.getPointsToUse() : 0;
                 if (pointsToUse > 0 && customer != null) {
@@ -182,6 +178,9 @@ public class POSService {
                 BigDecimal finalAmount = totalAmount.subtract(discountAmount);
                 invoice.setTotalAmount(totalAmount);
                 invoice.setDiscountAmount(discountAmount);
+                invoice.setVolumeDiscountAmt(volumeDiscountAmt);
+                invoice.setOrderDiscountAmt(orderDiscountAmt);
+                invoice.setCouponDiscountAmt(couponDiscountAmt);
                 invoice.setFinalAmount(finalAmount);
 
                 // 6. Payment validation
@@ -548,6 +547,9 @@ public class POSService {
                                 .type(invoice.getType().name())
                                 .totalAmount(invoice.getTotalAmount())
                                 .discountAmount(invoice.getDiscountAmount())
+                                .volumeDiscountAmt(invoice.getVolumeDiscountAmt())
+                                .orderDiscountAmt(invoice.getOrderDiscountAmt())
+                                .couponDiscountAmt(invoice.getCouponDiscountAmt())
                                 .finalAmount(invoice.getFinalAmount())
                                 .pointsUsed(invoice.getPointsUsed())
                                 .pointsEarned(invoice.getPointsEarned())
