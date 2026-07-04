@@ -131,21 +131,12 @@ websocket:
     simple-broker-destination-prefix: /topic,/queue
 
 # ========================
-# EMAIL (Spring Mail)
+# EMAIL (Brevo HTTP API — SMTP bị Railway chặn ở gói Free/Hobby)
 # ========================
-spring.mail:
-  host: ${SPRING_MAIL_HOST:smtp.gmail.com}
-  port: ${SPRING_MAIL_PORT:587}
-  username: ${MAIL_USERNAME:}
-  password: ${MAIL_PASSWORD:}
-  properties:
-    mail:
-      smtp:
-        auth: true
-        ssl:
-          enable: ${MAIL_SSL_ENABLE:false}
-        starttls:
-          enable: ${MAIL_STARTTLS_ENABLE:true}
+brevo:
+  api-key: ${BREVO_API_KEY:}
+  from-email: ${BREVO_FROM_EMAIL:}
+  from-name: ${BREVO_FROM_NAME:SME Bookstore}
 
 # ========================
 # FILE UPLOAD

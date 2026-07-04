@@ -24,7 +24,7 @@ public class CustomerAddress extends BaseEntity {
     @Column(name = "province_city", nullable = false, length = 100)
     private String provinceCity;
 
-    @Column(nullable = false, length = 100)
+    @Column(length = 100)
     private String district;
 
     @Column(length = 100)

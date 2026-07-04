@@ -13,10 +13,10 @@ public class CustomerAddressRequest {
     
     @NotBlank
     private String provinceCity;
-    
-    @NotBlank
+
+    // Không còn bắt buộc: sau cải cách hành chính 2025, Việt Nam bỏ cấp quận/huyện
     private String district;
-    
+
     private String ward;
     
     @NotBlank
