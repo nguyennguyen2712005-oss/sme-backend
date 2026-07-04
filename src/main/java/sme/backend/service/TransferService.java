@@ -154,10 +154,9 @@ public class TransferService {
 
         User approver = userRepository.findById(approvedBy)
                 .orElseThrow(() -> new ResourceNotFoundException("User", approvedBy));
-        if (!ApprovalUtils.canApprove(approver, transfer.getCreatedByUserId(),
-                transfer.getCreatorRole(), transfer.getFromWarehouseId())) {
+        if (!canApproveOrRejectTransfer(approver, transfer)) {
             throw new BusinessException("FORBIDDEN",
-                    "Bạn không có quyền duyệt phiếu này (vi phạm quy tắc duyệt chéo).");
+                    "Bạn không có quyền duyệt phiếu này (chỉ quản lý kho gửi hàng hoặc Admin mới được duyệt).");
         }
 
         transfer.setStatus(InternalTransfer.TransferStatus.APPROVED);
@@ -185,10 +184,9 @@ public class TransferService {
 
         User approver = userRepository.findById(rejectedBy)
                 .orElseThrow(() -> new ResourceNotFoundException("User", rejectedBy));
-        if (!ApprovalUtils.canApprove(approver, transfer.getCreatedByUserId(),
-                transfer.getCreatorRole(), transfer.getFromWarehouseId())) {
+        if (!canApproveOrRejectTransfer(approver, transfer)) {
             throw new BusinessException("FORBIDDEN",
-                    "Bạn không có quyền từ chối phiếu này (vi phạm quy tắc duyệt chéo).");
+                    "Bạn không có quyền từ chối phiếu này (chỉ quản lý kho gửi hàng hoặc Admin mới được duyệt).");
         }
 
         transfer.setStatus(InternalTransfer.TransferStatus.REJECTED);
@@ -201,7 +199,27 @@ public class TransferService {
         return saved;
     }
 
-    // ─── XUẤT KHO (APPROVED → DISPATCHED, hoặc DRAFT → DISPATCHED cho auto) ──
+    /**
+     * Ai được duyệt/từ chối phiếu chuyển kho:
+     * - Quản lý (Manager) của kho GỬI hàng (fromWarehouseId) — vì đây là kho bị yêu cầu xuất hàng đi,
+     *   nên chính kho đó phải là người xác nhận đồng ý chuyển, không cần Admin can thiệp.
+     * - Hoặc Admin (giữ quyền duyệt thay/giám sát khi cần).
+     * Không tự duyệt phiếu do chính mình tạo.
+     */
+    private boolean canApproveOrRejectTransfer(User approver, InternalTransfer transfer) {
+        if (approver.getId().equals(transfer.getCreatedByUserId())) {
+            return false;
+        }
+        if (approver.getRole() == User.UserRole.ROLE_MANAGER
+                && transfer.getFromWarehouseId() != null
+                && transfer.getFromWarehouseId().equals(approver.getWarehouseId())) {
+            return true;
+        }
+        return ApprovalUtils.canApprove(approver, transfer.getCreatedByUserId(),
+                transfer.getCreatorRole(), transfer.getFromWarehouseId());
+    }
+
+    // ─── XUẤT KHO (APPROVED → DISPATCHED) — kể cả phiếu tự động cũng phải qua duyệt trước ──
     @Transactional
     public InternalTransfer dispatch(UUID transferId, UUID dispatchedBy) {
         InternalTransfer transfer = transferRepository.findByIdWithItems(transferId)
@@ -209,14 +227,9 @@ public class TransferService {
 
         boolean isAutoTransfer = transfer.getReferenceOrderId() != null;
 
-        boolean validStatus = isAutoTransfer
-                ? transfer.getStatus() == InternalTransfer.TransferStatus.DRAFT
-                : transfer.getStatus() == InternalTransfer.TransferStatus.APPROVED;
-
-        if (!validStatus) {
-            String expected = isAutoTransfer ? "DRAFT" : "APPROVED";
+        if (transfer.getStatus() != InternalTransfer.TransferStatus.APPROVED) {
             throw new BusinessException("INVALID_STATUS",
-                    "Chỉ có thể xuất kho phiếu ở trạng thái " + expected + ".");
+                    "Chỉ có thể xuất kho phiếu ở trạng thái APPROVED.");
         }
 
         User user = userRepository.findById(dispatchedBy)

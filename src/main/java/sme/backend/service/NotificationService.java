@@ -405,8 +405,13 @@ public class NotificationService {
                 "type", "TRANSFER_PENDING_APPROVAL",
                 "transferId", transfer.getId(),
                 "transferCode", transfer.getCode());
-        notifyAdminsOnly("TRANSFER_PENDING_APPROVAL", "📦 Phiếu chuyển kho chờ duyệt",
-                String.format("Phiếu chuyển kho %s đang chờ duyệt.", transfer.getCode()), payload);
+        String title = "📦 Phiếu chuyển kho chờ duyệt";
+        String message = String.format("Phiếu chuyển kho %s đang chờ kho xuất hàng duyệt.", transfer.getCode());
+        notifyAdminsOnly("TRANSFER_PENDING_APPROVAL", title, message, payload);
+        // Quản lý kho xuất hàng (fromWarehouse) mới là người thực sự cần duyệt phiếu này
+        if (transfer.getFromWarehouseId() != null) {
+            notifyManagersOfWarehouse(transfer.getFromWarehouseId(), "TRANSFER_PENDING_APPROVAL", title, message, payload);
+        }
     }
 
     @Async

@@ -38,6 +38,7 @@ public class OrderService {
     private final InvoiceRepository invoiceRepository;
     private final ProductReviewRepository productReviewRepository; // <-- ĐÃ THÊM
     private final org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
+    private final PromotionService promotionService;
 
     private final EntityManager entityManager;
 
@@ -211,7 +212,8 @@ public class OrderService {
                                 + sourceWarehouseId.toString().substring(0, 4))
                         .fromWarehouseId(sourceWarehouseId).toWarehouseId(assignedWarehouseId)
                         .createdByUserId(transferCreatorId) // Gán ID Nhân viên hợp lệ
-                        .status(InternalTransfer.TransferStatus.DRAFT)
+                        // Phiếu tự động vẫn phải qua kho xuất hàng duyệt, không được tự động duyệt/xuất luôn
+                        .status(InternalTransfer.TransferStatus.PENDING_APPROVAL)
                         .referenceOrderId(order.getId())
                         .note("Tự động tạo - Gom hàng cho Đơn #" + order.getCode())
                         .build();
@@ -228,7 +230,7 @@ public class OrderService {
                 inventoryService.reserveForOnlineOrderBatch(entry.getValue(), sourceWarehouseId, order.getId(),
                         "SYSTEM_CONSOLIDATION");
                 transferRepository.save(transfer);
-                notificationService.notifyTransferArrived(transfer.getId(), sourceWarehouseId);
+                notificationService.notifyTransferPendingApproval(transfer);
             }
         }
 
@@ -246,6 +248,19 @@ public class OrderService {
                 );
             } catch (Exception e) {
                 log.warn("Không thể gửi email cho khách: {}", e.getMessage());
+            }
+        }
+
+        // Tăng lượt sử dụng cho các mã khuyến mãi đã áp dụng vào đơn hàng này
+        if (req.getCouponCodes() != null) {
+            for (String code : req.getCouponCodes()) {
+                if (code != null && !code.isBlank()) {
+                    try {
+                        promotionService.markUsed(code);
+                    } catch (Exception e) {
+                        log.warn("Không thể cập nhật lượt dùng cho mã khuyến mãi {}: {}", code, e.getMessage());
+                    }
+                }
             }
         }
 

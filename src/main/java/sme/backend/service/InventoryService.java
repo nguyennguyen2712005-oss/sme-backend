@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -62,7 +63,16 @@ public class InventoryService {
                             .inTransit(0)
                             .minQuantity(getSafeLowStockThreshold())
                             .build();
-                    return inventoryRepository.save(inv);
+                    try {
+                        // saveAndFlush để bắt lỗi trùng khóa ngay tại đây thay vì lúc commit
+                        return inventoryRepository.saveAndFlush(inv);
+                    } catch (DataIntegrityViolationException e) {
+                        // Race condition: request khác đã tạo row này trước (VD bấm xác nhận 2 lần,
+                        // hoặc 2 phiếu nhập cùng sản phẩm/kho được xử lý gần như đồng thời).
+                        // Lấy lại row vừa được tạo thay vì để lỗi văng ra ngoài.
+                        return inventoryRepository.findByProductIdAndWarehouseId(productId, warehouseId)
+                                .orElseThrow(() -> e);
+                    }
                 });
     }
 
