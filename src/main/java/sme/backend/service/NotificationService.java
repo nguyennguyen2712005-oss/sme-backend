@@ -527,6 +527,50 @@ public class NotificationService {
                 String.format("Phiếu kiểm kê %s đang chờ duyệt.", adj.getCode()), payload);
     }
 
+    // ── Supplier Return Notifications ────────────────────────────────────────
+
+    @Async
+    public void notifySupplierReturnPendingApproval(sme.backend.entity.SupplierReturn sr) {
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "SUPPLIER_RETURN_PENDING_APPROVAL");
+        payload.put("returnId", sr.getId());
+        payload.put("returnCode", sr.getCode());
+        payload.put("warehouseId", sr.getWarehouseId());
+        saveNotificationForRecipients("SUPPLIER_RETURN_PENDING_APPROVAL",
+                "📦 Phiếu hoàn trả NCC chờ duyệt",
+                String.format("Phiếu hoàn trả NCC %s đang chờ phê duyệt.", sr.getCode()),
+                payload, sr.getWarehouseId());
+    }
+
+    @Async
+    public void notifySupplierReturnApproved(sme.backend.entity.SupplierReturn sr) {
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "SUPPLIER_RETURN_APPROVED");
+        payload.put("returnId", sr.getId());
+        payload.put("returnCode", sr.getCode());
+        if (sr.getSubmittedBy() != null) {
+            notifySpecificUser(sr.getSubmittedBy(), "SUPPLIER_RETURN_APPROVED",
+                    "✅ Phiếu hoàn trả NCC đã được duyệt",
+                    String.format("Phiếu hoàn trả NCC %s đã được phê duyệt. Có thể tiến hành xuất kho.", sr.getCode()),
+                    payload);
+        }
+    }
+
+    @Async
+    public void notifySupplierReturnRejected(sme.backend.entity.SupplierReturn sr) {
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "SUPPLIER_RETURN_REJECTED");
+        payload.put("returnId", sr.getId());
+        payload.put("returnCode", sr.getCode());
+        payload.put("reason", sr.getRejectionReason());
+        if (sr.getSubmittedBy() != null) {
+            notifySpecificUser(sr.getSubmittedBy(), "SUPPLIER_RETURN_REJECTED",
+                    "❌ Phiếu hoàn trả NCC bị từ chối",
+                    String.format("Phiếu hoàn trả NCC %s bị từ chối. Lý do: %s", sr.getCode(), sr.getRejectionReason()),
+                    payload);
+        }
+    }
+
     public void saveNotification(sme.backend.entity.Notification notif) {
         notificationRepository.save(notif);
     }

@@ -30,7 +30,17 @@ public class DatabaseFixRunner implements CommandLineRunner {
             // Also drop constraints on order_status_history just in case
             jdbcTemplate.execute("ALTER TABLE order_status_history DROP CONSTRAINT IF EXISTS order_status_history_new_status_check");
             jdbcTemplate.execute("ALTER TABLE order_status_history DROP CONSTRAINT IF EXISTS order_status_history_old_status_check");
-            
+
+            // Fix purchase_orders — thêm PENDING_APPROVAL, PARTIAL_RECEIVED
+            jdbcTemplate.execute("ALTER TABLE purchase_orders DROP CONSTRAINT IF EXISTS purchase_orders_status_check");
+            jdbcTemplate.execute("ALTER TABLE purchase_orders ADD CONSTRAINT purchase_orders_status_check " +
+                    "CHECK (status IN ('DRAFT','PENDING_APPROVAL','APPROVED','REJECTED','PARTIAL_RECEIVED','COMPLETED','CANCELLED'))");
+
+            // Fix supplier_returns — thêm PENDING_APPROVAL, SHIPPED
+            jdbcTemplate.execute("ALTER TABLE supplier_returns DROP CONSTRAINT IF EXISTS supplier_returns_status_check");
+            jdbcTemplate.execute("ALTER TABLE supplier_returns ADD CONSTRAINT supplier_returns_status_check " +
+                    "CHECK (status IN ('DRAFT','PENDING_APPROVAL','APPROVED','REJECTED','SHIPPED','CONFIRMED','CANCELLED'))");
+
             log.info("Successfully cleaned up outdated enum constraints in database.");
 
             // Phase 5: Database Index Optimization for Search Performance

@@ -384,6 +384,7 @@ public class TransferService {
             boolean allDone = allTransfers.stream()
                     .allMatch(t -> t.getStatus() == InternalTransfer.TransferStatus.RECEIVED
                                || t.getStatus() == InternalTransfer.TransferStatus.RECEIVED_PARTIAL
+                               || t.getStatus() == InternalTransfer.TransferStatus.REJECTED_BY_RECEIVER
                                || t.getStatus() == InternalTransfer.TransferStatus.CANCELLED);
 
             if (allDone) {
@@ -444,6 +445,33 @@ public class TransferService {
 
         notificationService.notifyTransferRejectedByReceiver(savedTransfer);
         log.info("Transfer {} rejected by receiver: reason={}", savedTransfer.getCode(), reason);
+
+        // Nếu là phiếu auto (gom hàng đơn online), kiểm tra toàn bộ phiếu của đơn
+        // để tránh đơn bị kẹt mãi ở WAITING_FOR_CONSOLIDATION
+        if (savedTransfer.getReferenceOrderId() != null) {
+            UUID orderId = savedTransfer.getReferenceOrderId();
+            transferRepository.flush();
+            List<InternalTransfer> allTransfers = transferRepository.findByReferenceOrderId(orderId);
+
+            boolean allTerminal = allTransfers.stream()
+                    .allMatch(t -> t.getStatus() == InternalTransfer.TransferStatus.RECEIVED
+                               || t.getStatus() == InternalTransfer.TransferStatus.RECEIVED_PARTIAL
+                               || t.getStatus() == InternalTransfer.TransferStatus.REJECTED_BY_RECEIVER
+                               || t.getStatus() == InternalTransfer.TransferStatus.CANCELLED);
+
+            if (allTerminal) {
+                orderRepository.findById(orderId).ifPresent(order -> {
+                    if (order.getStatus() == Order.OrderStatus.WAITING_FOR_CONSOLIDATION) {
+                        order.transitionTo(Order.OrderStatus.PENDING,
+                                "Hệ thống: Phiếu chuyển kho bị từ chối — cần xử lý thủ công", "SYSTEM");
+                        orderRepository.save(order);
+                        log.warn("Order {} moved to PENDING after transfer rejected by receiver (manual review needed)",
+                                order.getCode());
+                    }
+                });
+            }
+        }
+
         return savedTransfer;
     }
 

@@ -86,7 +86,7 @@ public class PurchaseOrder extends BaseEntity {
     private List<PurchaseItem> items = new ArrayList<>();
 
     public enum PurchaseStatus {
-        DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, COMPLETED, CANCELLED
+        DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, PARTIAL_RECEIVED, COMPLETED, CANCELLED
     }
 
     public void addItem(PurchaseItem item) {
@@ -96,7 +96,11 @@ public class PurchaseOrder extends BaseEntity {
 
     public void recalculateTotal() {
         this.totalAmount = items.stream()
-                .map(i -> i.getImportPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
+                .map(i -> {
+                    BigDecimal price = i.getImportPrice() != null ? i.getImportPrice() : BigDecimal.ZERO;
+                    int qty = i.getQuantity() != null ? i.getQuantity() : 0;
+                    return price.multiply(BigDecimal.valueOf(qty));
+                })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }

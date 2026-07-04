@@ -105,6 +105,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/orders/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/promotions/active").permitAll()
                         .requestMatchers(HttpMethod.POST, "/promotions/validate").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/provinces").permitAll()
 
                         // ── STOREFRONT (CUSTOMER) ──────────────────────────────
                         // Customer cần tạo đơn hàng online và hủy đơn hàng

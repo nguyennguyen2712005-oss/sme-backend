@@ -38,6 +38,17 @@ public class PurchaseController {
                         req, principal.getId(), principal.getRole().name())));
     }
 
+    /** Chỉnh sửa phiếu nháp (chỉ DRAFT) */
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<PurchaseOrder>> update(
+            @PathVariable UUID id,
+            @Valid @RequestBody CreatePurchaseOrderRequest req,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật phiếu nhập thành công",
+                purchaseService.updateDraft(id, req, principal.getId())));
+    }
+
     /** Chỉ người tạo phiếu mới được gửi duyệt (kiểm tra trong service) */
     @PostMapping("/{id}/submit")
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")

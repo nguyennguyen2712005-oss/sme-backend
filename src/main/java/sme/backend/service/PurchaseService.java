@@ -66,6 +66,41 @@ public class PurchaseService {
         return saved;
     }
 
+    // ─── CHỈNH SỬA PHIẾU NHÁP ──────────────────────────────────────────────────
+    @Transactional
+    public PurchaseOrder updateDraft(UUID poId, CreatePurchaseOrderRequest req, UUID updatedBy) {
+        PurchaseOrder po = purchaseOrderRepository.findByIdWithItems(poId)
+                .orElseThrow(() -> new ResourceNotFoundException("PurchaseOrder", poId));
+        boolean isDraft = po.getStatus() == PurchaseOrder.PurchaseStatus.DRAFT;
+        boolean isRejected = po.getStatus() == PurchaseOrder.PurchaseStatus.REJECTED;
+        if (!isDraft && !isRejected) {
+            throw new BusinessException("INVALID_STATUS", "Chỉ có thể chỉnh sửa phiếu ở trạng thái DRAFT hoặc BỊ TỪ CHỐI.");
+        }
+        // Phiếu bị từ chối → reset về DRAFT để có thể gửi duyệt lại
+        if (isRejected) {
+            po.setStatus(PurchaseOrder.PurchaseStatus.DRAFT);
+            po.setRejectedBy(null);
+            po.setRejectedAt(null);
+            po.setRejectionReason(null);
+        }
+        if (req.getNote() != null) po.setNote(req.getNote());
+        po.getItems().clear();
+        for (CreatePurchaseOrderRequest.PurchaseItemRequest itemReq : req.getItems()) {
+            productRepository.findById(itemReq.getProductId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Sản phẩm", itemReq.getProductId()));
+            PurchaseItem item = PurchaseItem.builder()
+                    .productId(itemReq.getProductId())
+                    .quantity(itemReq.getQuantity() != null ? itemReq.getQuantity() : 0)
+                    .importPrice(itemReq.getImportPrice() != null ? itemReq.getImportPrice() : BigDecimal.ZERO)
+                    .build();
+            po.addItem(item);
+        }
+        po.recalculateTotal();
+        PurchaseOrder saved = purchaseOrderRepository.save(po);
+        log.info("Purchase order DRAFT {} updated by {}", saved.getCode(), updatedBy);
+        return saved;
+    }
+
     // ─── GỬI DUYỆT (DRAFT → PENDING_APPROVAL) ───────────────────────────────
     @Transactional
     public PurchaseOrder submitForApproval(UUID poId, UUID submittedBy) {
@@ -150,15 +185,17 @@ public class PurchaseService {
         return saved;
     }
 
-    // ─── NHẬN HÀNG (APPROVED → COMPLETED) — chỉ Manager kho ─────────────────
+    // ─── NHẬN HÀNG (APPROVED/PARTIAL_RECEIVED → PARTIAL_RECEIVED/COMPLETED) ──
     @Transactional
     public PurchaseOrder receivePurchaseOrder(UUID poId, List<ReceiveItemRequest> receivedItems,
                                                UUID receivedBy) {
         PurchaseOrder po = purchaseOrderRepository.findByIdWithItems(poId)
                 .orElseThrow(() -> new ResourceNotFoundException("PurchaseOrder", poId));
 
-        if (po.getStatus() != PurchaseOrder.PurchaseStatus.APPROVED) {
-            throw new BusinessException("INVALID_STATUS", "Chỉ có thể nhận hàng phiếu ở trạng thái APPROVED.");
+        if (po.getStatus() != PurchaseOrder.PurchaseStatus.APPROVED
+                && po.getStatus() != PurchaseOrder.PurchaseStatus.PARTIAL_RECEIVED) {
+            throw new BusinessException("INVALID_STATUS",
+                    "Chỉ có thể nhận hàng phiếu ở trạng thái APPROVED hoặc PARTIAL_RECEIVED.");
         }
 
         User receiver = userRepository.findById(receivedBy)
@@ -171,57 +208,90 @@ public class PurchaseService {
 
         String operator = receiver.getFullName() != null ? receiver.getFullName() : receiver.getUsername();
 
+        // Lưu trạng thái receivedQty trước khi xử lý để tính công nợ đợt này
+        java.util.Map<UUID, Integer> prevQtyMap = new java.util.HashMap<>();
+        for (PurchaseItem item : po.getItems()) {
+            prevQtyMap.put(item.getId(), item.getReceivedQty() != null ? item.getReceivedQty() : 0);
+        }
+
         try {
             for (PurchaseItem item : po.getItems()) {
+                int alreadyReceived = prevQtyMap.getOrDefault(item.getId(), 0);
+                int remaining = item.getQuantity() - alreadyReceived;
+
                 ReceiveItemRequest req = receivedItems.stream()
                         .filter(r -> r.productId().equals(item.getProductId()))
                         .findFirst()
                         .orElse(null);
 
-                int actualQty = (req != null) ? req.receivedQty() : item.getQuantity();
+                // Nếu không có trong request → nhận hết số còn lại (default behavior)
+                int batchQty = (req != null) ? req.receivedQty() : remaining;
                 String receiveNote = (req != null) ? req.receiveNote() : null;
 
-                if (actualQty < 0) {
-                    throw new BusinessException("INVALID_QTY", "Số lượng nhận không được âm.");
+                if (batchQty < 0 || batchQty > remaining) {
+                    throw new BusinessException("INVALID_QTY",
+                            String.format("Số lượng nhận không hợp lệ cho sản phẩm %s. Còn cần nhận: %d",
+                                    item.getProductId(), remaining));
                 }
 
-                item.setReceivedQty(actualQty);
-                item.setReceiveNote(receiveNote);
+                item.setReceivedQty(alreadyReceived + batchQty);
+                if (receiveNote != null) item.setReceiveNote(receiveNote);
 
-                if (actualQty > 0) {
+                if (batchQty > 0) {
                     BigDecimal importPrice = item.getImportPrice() != null
                             ? item.getImportPrice() : BigDecimal.ZERO;
                     inventoryService.importStock(item.getProductId(), po.getWarehouseId(),
-                            actualQty, importPrice, po.getId(), operator);
+                            batchQty, importPrice, po.getId(), operator);
                 }
             }
 
-            po.setStatus(PurchaseOrder.PurchaseStatus.COMPLETED);
+            // Kiểm tra đã nhận đủ tất cả chưa
+            boolean allComplete = po.getItems().stream()
+                    .allMatch(i -> i.getReceivedQty() != null && i.getReceivedQty() >= i.getQuantity());
+
+            PurchaseOrder.PurchaseStatus newStatus = allComplete
+                    ? PurchaseOrder.PurchaseStatus.COMPLETED
+                    : PurchaseOrder.PurchaseStatus.PARTIAL_RECEIVED;
+
+            po.setStatus(newStatus);
             po.setReceivedBy(receivedBy);
             po.setReceivedAt(Instant.now());
             po = purchaseOrderRepository.save(po);
 
+            // Tạo công nợ cho đợt nhận này (chỉ phần thực nhận trong đợt)
             Supplier supplier = supplierRepository.findById(po.getSupplierId()).orElse(null);
             int paymentTerms = (supplier != null && supplier.getPaymentTerms() != null)
                     ? supplier.getPaymentTerms() : 30;
 
-            BigDecimal actualTotal = po.getItems().stream()
-                    .map(i -> i.getImportPrice().multiply(
-                            BigDecimal.valueOf(i.getReceivedQty() != null ? i.getReceivedQty() : 0)))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal batchTotal = BigDecimal.ZERO;
+            for (PurchaseItem item : po.getItems()) {
+                int prev = prevQtyMap.getOrDefault(item.getId(), 0);
+                int batchQty = (item.getReceivedQty() != null ? item.getReceivedQty() : 0) - prev;
+                if (batchQty > 0) {
+                    BigDecimal price = item.getImportPrice() != null ? item.getImportPrice() : BigDecimal.ZERO;
+                    batchTotal = batchTotal.add(price.multiply(BigDecimal.valueOf(batchQty)));
+                }
+            }
 
-            SupplierDebt debt = SupplierDebt.builder()
-                    .supplierId(po.getSupplierId())
-                    .purchaseOrderId(po.getId())
-                    .totalDebt(actualTotal)
-                    .paidAmount(BigDecimal.ZERO)
-                    .status(SupplierDebt.DebtStatus.UNPAID)
-                    .dueDate(LocalDate.now().plusDays(paymentTerms))
-                    .build();
-            supplierDebtRepository.save(debt);
+            if (batchTotal.compareTo(BigDecimal.ZERO) > 0) {
+                SupplierDebt debt = SupplierDebt.builder()
+                        .supplierId(po.getSupplierId())
+                        .purchaseOrderId(po.getId())
+                        .totalDebt(batchTotal)
+                        .paidAmount(BigDecimal.ZERO)
+                        .status(SupplierDebt.DebtStatus.UNPAID)
+                        .dueDate(LocalDate.now().plusDays(paymentTerms))
+                        .build();
+                supplierDebtRepository.save(debt);
+            }
 
-            notificationService.notifyImportSuccess(po, po.getWarehouseId());
-            log.info("Purchase order received and completed: {}", po.getCode());
+            if (newStatus == PurchaseOrder.PurchaseStatus.COMPLETED) {
+                notificationService.notifyImportSuccess(po, po.getWarehouseId());
+                log.info("Purchase order fully received and completed: {}", po.getCode());
+            } else {
+                log.info("Purchase order partially received ({}): {} — batch total {}",
+                        newStatus, po.getCode(), batchTotal);
+            }
             return po;
 
         } catch (BusinessException be) {
@@ -239,9 +309,10 @@ public class PurchaseService {
                 .orElseThrow(() -> new ResourceNotFoundException("PurchaseOrder", poId));
 
         if (po.getStatus() == PurchaseOrder.PurchaseStatus.COMPLETED
-                || po.getStatus() == PurchaseOrder.PurchaseStatus.APPROVED) {
+                || po.getStatus() == PurchaseOrder.PurchaseStatus.APPROVED
+                || po.getStatus() == PurchaseOrder.PurchaseStatus.PARTIAL_RECEIVED) {
             throw new BusinessException("CANNOT_CANCEL",
-                    "Không thể hủy phiếu đã duyệt hoặc đã hoàn thành.");
+                    "Không thể hủy phiếu đã duyệt, đang nhận hoặc đã hoàn thành.");
         }
         if (reason == null || reason.isBlank()) {
             throw new BusinessException("MISSING_REASON", "Vui lòng nhập lý do hủy.");
