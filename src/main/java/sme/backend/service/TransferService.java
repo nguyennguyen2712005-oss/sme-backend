@@ -201,8 +201,11 @@ public class TransferService {
 
     /**
      * Ai được duyệt/từ chối phiếu chuyển kho:
-     * - Quản lý (Manager) của kho GỬI hàng (fromWarehouseId) — vì đây là kho bị yêu cầu xuất hàng đi,
-     *   nên chính kho đó phải là người xác nhận đồng ý chuyển, không cần Admin can thiệp.
+     * - Phiếu TỰ ĐỘNG (gom hàng cho đơn khách, referenceOrderId != null): Quản lý kho GỬI hàng
+     *   (fromWarehouseId) duyệt — vì hệ thống đang "xin" kho đó nhả hàng ra cho đơn khác.
+     * - Phiếu THỦ CÔNG (referenceOrderId == null): người tạo luôn đứng ở kho xuất (tự chuyển hàng
+     *   đi cho kho kia), nên Quản lý kho NHẬN hàng (toWarehouseId) mới là người xác nhận đồng ý nhận
+     *   trước khi kho xuất được xuất hàng thật.
      * - Hoặc Admin (giữ quyền duyệt thay/giám sát khi cần).
      * Không tự duyệt phiếu do chính mình tạo.
      */
@@ -210,9 +213,11 @@ public class TransferService {
         if (approver.getId().equals(transfer.getCreatedByUserId())) {
             return false;
         }
+        boolean isAutoTransfer = transfer.getReferenceOrderId() != null;
+        UUID relevantWarehouseId = isAutoTransfer ? transfer.getFromWarehouseId() : transfer.getToWarehouseId();
         if (approver.getRole() == User.UserRole.ROLE_MANAGER
-                && transfer.getFromWarehouseId() != null
-                && transfer.getFromWarehouseId().equals(approver.getWarehouseId())) {
+                && relevantWarehouseId != null
+                && relevantWarehouseId.equals(approver.getWarehouseId())) {
             return true;
         }
         return ApprovalUtils.canApprove(approver, transfer.getCreatedByUserId(),

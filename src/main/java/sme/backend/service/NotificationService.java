@@ -406,11 +406,16 @@ public class NotificationService {
                 "transferId", transfer.getId(),
                 "transferCode", transfer.getCode());
         String title = "📦 Phiếu chuyển kho chờ duyệt";
-        String message = String.format("Phiếu chuyển kho %s đang chờ kho xuất hàng duyệt.", transfer.getCode());
+        boolean isAutoTransfer = transfer.getReferenceOrderId() != null;
+        // Phiếu tự động: kho xuất (fromWarehouse) duyệt. Phiếu thủ công: người tạo luôn ở kho xuất,
+        // nên kho nhận hàng (toWarehouse) mới là người cần xác nhận đồng ý nhận.
+        java.util.UUID approverWarehouseId = isAutoTransfer ? transfer.getFromWarehouseId() : transfer.getToWarehouseId();
+        String message = isAutoTransfer
+                ? String.format("Phiếu chuyển kho %s đang chờ kho xuất hàng duyệt.", transfer.getCode())
+                : String.format("Phiếu chuyển kho %s đang chờ kho nhận hàng xác nhận.", transfer.getCode());
         notifyAdminsOnly("TRANSFER_PENDING_APPROVAL", title, message, payload);
-        // Quản lý kho xuất hàng (fromWarehouse) mới là người thực sự cần duyệt phiếu này
-        if (transfer.getFromWarehouseId() != null) {
-            notifyManagersOfWarehouse(transfer.getFromWarehouseId(), "TRANSFER_PENDING_APPROVAL", title, message, payload);
+        if (approverWarehouseId != null) {
+            notifyManagersOfWarehouse(approverWarehouseId, "TRANSFER_PENDING_APPROVAL", title, message, payload);
         }
     }
 
