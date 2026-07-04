@@ -78,7 +78,9 @@ public class EmailService {
             log.info("Đã gửi email thông báo trạng thái đơn hàng {} đến {}", orderCode, toEmail);
 
         } catch (MessagingException e) {
-            log.error("Lỗi khi gửi email đến {}: {}", toEmail, e.getMessage());
+            log.error("Lỗi khi gửi email đến {}: {} ({})", toEmail, e.getMessage(), e.getClass().getSimpleName(), e);
+        } catch (Exception e) {
+            log.error("Lỗi không mong đợi khi gửi email đến {}: {} ({})", toEmail, e.getMessage(), e.getClass().getSimpleName(), e);
         }
     }
 
@@ -113,7 +115,9 @@ public class EmailService {
             log.info("Đã gửi email OTP khôi phục mật khẩu đến {}", toEmail);
 
         } catch (MessagingException e) {
-            log.error("Lỗi khi gửi email đến {}: {}", toEmail, e.getMessage());
+            log.error("Lỗi khi gửi email OTP đến {}: {} ({})", toEmail, e.getMessage(), e.getClass().getSimpleName(), e);
+        } catch (Exception e) {
+            log.error("Lỗi không mong đợi khi gửi email OTP đến {}: {} ({})", toEmail, e.getMessage(), e.getClass().getSimpleName(), e);
         }
     }
 }
