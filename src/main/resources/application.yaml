@@ -136,14 +136,16 @@ websocket:
 spring.mail:
   host: ${SPRING_MAIL_HOST:smtp.gmail.com}
   port: ${SPRING_MAIL_PORT:587}
-  username: ${MAIL_USERNAME:thienquynhfff@gmail.com}
-  password: ${MAIL_PASSWORD:rqxzjrockabeybrf}
+  username: ${MAIL_USERNAME:}
+  password: ${MAIL_PASSWORD:}
   properties:
     mail:
       smtp:
         auth: true
+        ssl:
+          enable: ${MAIL_SSL_ENABLE:false}
         starttls:
-          enable: true
+          enable: ${MAIL_STARTTLS_ENABLE:true}
 
 # ========================
 # FILE UPLOAD
